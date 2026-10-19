@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+LocalDrop-LAN.exe
+dist/
+Output/
+*.tmp
+
+# Operating System files
+Thumbs.db
+.DS_Store
+
+# Temporary scripts
+take_screenshots.js

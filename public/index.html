@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LocalDrop LAN - P2P File & Folder Transfer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: [
+              '-apple-system',
+              'BlinkMacSystemFont',
+              '"SF Pro Display"',
+              '"SF Pro Text"',
+              '"Segoe UI"',
+              'Roboto',
+              'Helvetica',
+              'Arial',
+              'sans-serif'
+            ]
+          },
+          colors: {
+            apple: {
+              blue: '#007AFF',
+              'blue-hover': '#0062CC',
+              green: '#34C759',
+              amber: '#FF9500',
+              red: '#FF3B30'
+            }
+          },
+          animation: {
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'ping-slow': 'ping 2.5s cubic-bezier(0, 0, 0.2, 1) infinite',
+            'radar-pulse': 'radarGlow 4s ease-in-out infinite'
+          },
+          keyframes: {
+            radarGlow: {
+              '0%, 100%': { opacity: '0.4', transform: 'translate(-50%, -50%) scale(1)' },
+              '50%': { opacity: '0.8', transform: 'translate(-50%, -50%) scale(1.02)' }
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- QRCode.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- JSZip for Client-side Folder Packaging -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    /* ==========================================================
+       APPLE LIQUID GLASS (visionOS / iOS 17+) DESIGN SYSTEM
+       ========================================================== */
+    :root {
+      --apple-font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --apple-blue: #007AFF;
+      --apple-blue-gradient: linear-gradient(180deg, #1A8CFF 0%, #007AFF 100%);
+    }
+
+    * {
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      font-family: var(--apple-font);
+      background-color: #07090e;
+      background-image: 
+        radial-gradient(at 10% 12%, rgba(0, 122, 255, 0.18) 0px, transparent 40%),
+        radial-gradient(at 88% 10%, rgba(147, 51, 234, 0.16) 0px, transparent 40%),
+        radial-gradient(at 50% 50%, rgba(0, 198, 255, 0.08) 0px, transparent 45%),
+        radial-gradient(at 90% 88%, rgba(0, 122, 255, 0.12) 0px, transparent 40%),
+        radial-gradient(at 12% 88%, rgba(99, 102, 241, 0.14) 0px, transparent 40%);
+      background-attachment: fixed;
+      background-size: cover;
+      color: #FFFFFF;
+    }
+
+    /* Primary Liquid Glass Container */
+    .apple-glass {
+      background: rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(24px) saturate(150%);
+      -webkit-backdrop-filter: blur(24px) saturate(150%);
+      border-top: 1px solid rgba(255, 255, 255, 0.18);
+      border-left: 1px solid rgba(255, 255, 255, 0.18);
+      border-right: 1px solid rgba(255, 255, 255, 0.09);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+      box-shadow: 
+        0 12px 36px 0 rgba(0, 0, 0, 0.35),
+        inset 0 1px 1px 0 rgba(255, 255, 255, 0.22);
+      border-radius: 24px;
+    }
+
+    /* Interactive Liquid Glass Card (Peers, Panels) */
+    .apple-glass-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(24px) saturate(150%);
+      -webkit-backdrop-filter: blur(24px) saturate(150%);
+      border-top: 1px solid rgba(255, 255, 255, 0.18);
+      border-left: 1px solid rgba(255, 255, 255, 0.18);
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 
+        0 10px 30px 0 rgba(0, 0, 0, 0.3),
+        inset 0 1px 1px 0 rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .apple-glass-card:hover {
+      background: rgba(255, 255, 255, 0.09);
+      border-top-color: rgba(255, 255, 255, 0.32);
+      border-left-color: rgba(255, 255, 255, 0.32);
+      border-right-color: rgba(255, 255, 255, 0.18);
+      border-bottom-color: rgba(255, 255, 255, 0.18);
+      transform: scale(1.01);
+      box-shadow: 
+        0 18px 44px 0 rgba(0, 0, 0, 0.45),
+        inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.32);
+    }
+
+    .apple-glass-card.is-selected {
+      border: 2px solid #007AFF !important;
+      background: rgba(0, 122, 255, 0.16) !important;
+      box-shadow: 
+        0 0 25px rgba(0, 122, 255, 0.45),
+        inset 0 1px 1px 0 rgba(255, 255, 255, 0.35) !important;
+      transform: scale(1.01);
+    }
+
+    /* Inner Glass Wells (Inputs, status boxes, inner cards) */
+    .apple-glass-well {
+      background: rgba(0, 0, 0, 0.32);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.38);
+      border-radius: 16px;
+    }
+
+    /* Primary iOS Blue Action Button */
+    .apple-btn-primary {
+      background: linear-gradient(180deg, #1A8CFF 0%, #007AFF 100%);
+      color: #FFFFFF;
+      font-weight: 600;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 
+        0 4px 18px rgba(0, 122, 255, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+      border-radius: 12px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .apple-btn-primary:hover {
+      transform: scale(1.01);
+      filter: brightness(1.08);
+      box-shadow: 
+        0 6px 22px rgba(0, 122, 255, 0.6),
+        inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    }
+
+    .apple-btn-primary:active {
+      transform: scale(0.99);
+      filter: brightness(0.95);
+    }
+
+    /* Secondary Liquid Glass Button */
+    .apple-btn-glass {
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid rgba(255, 255, 255, 0.18);
+      border-left: 1px solid rgba(255, 255, 255, 0.18);
+      border-right: 1px solid rgba(255, 255, 255, 0.1);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 
+        0 4px 14px rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      color: #FFFFFF;
+      border-radius: 12px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .apple-btn-glass:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-top-color: rgba(255, 255, 255, 0.3);
+      border-left-color: rgba(255, 255, 255, 0.3);
+      transform: scale(1.01);
+      box-shadow: 
+        0 6px 18px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    }
+
+    .apple-btn-glass:active {
+      transform: scale(0.99);
+    }
+
+    /* Modals with Heavy Liquid Frosted Glass */
+    .apple-glass-modal {
+      background: rgba(20, 23, 33, 0.82);
+      backdrop-filter: blur(40px) saturate(180%);
+      -webkit-backdrop-filter: blur(40px) saturate(180%);
+      border-top: 1px solid rgba(255, 255, 255, 0.24);
+      border-left: 1px solid rgba(255, 255, 255, 0.24);
+      border-right: 1px solid rgba(255, 255, 255, 0.12);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 
+        0 32px 80px rgba(0, 0, 0, 0.7),
+        inset 0 1px 1.5px rgba(255, 255, 255, 0.35);
+      border-radius: 24px;
+    }
+
+    /* Radar Liquid Glass Rings */
+    .radar-circle {
+      border: 1px solid rgba(0, 122, 255, 0.22);
+      border-radius: 9999px;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      box-shadow: 
+        0 0 28px rgba(0, 122, 255, 0.05),
+        inset 0 0 28px rgba(0, 122, 255, 0.04);
+    }
+
+    /* Refined Liquid Glass Scrollbars */
+    ::-webkit-scrollbar {
+      width: 7px;
+      height: 7px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.18);
+      border-radius: 9999px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans selection:bg-[#007AFF] selection:text-white antialiased">
+
+  <!-- Header: Floating VisionOS Glass Bar -->
+  <header class="border-b border-white/[0.12] bg-[#0c0f18]/60 backdrop-blur-2xl saturate-[160%] sticky top-0 z-30 shadow-[0_4px_30px_rgba(0,0,0,0.35)]">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between flex-wrap gap-3">
+      
+      <!-- Brand & Status -->
+      <div class="flex items-center space-x-3.5">
+        <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#007AFF] via-[#5856D6] to-[#AF52DE] flex items-center justify-center shadow-lg shadow-blue-500/25 border border-white/25 shrink-0">
+          <i data-lucide="radio" class="w-5 h-5 text-white"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-lg font-bold tracking-tight text-white">LocalDrop LAN</h1>
+            <span class="text-[10px] font-semibold uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-400/30 px-2 py-0.5 rounded-full shadow-sm">Pro</span>
+          </div>
+          <div class="flex items-center space-x-2 text-xs text-white/60 mt-0.5 font-normal">
+            <span class="inline-block w-2 h-2 rounded-full bg-[#34C759] shadow-[0_0_8px_#34C759] animate-pulse shrink-0"></span>
+            <span id="networkIpBadge" class="flex items-center space-x-1.5 flex-wrap">Discovering network...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center Nav Tabs (Liquid Glass Segmented Control) -->
+      <nav class="flex items-center bg-black/35 border border-white/15 backdrop-blur-xl p-1 rounded-full shadow-[inset_0_1px_2px_rgba(0,0,0,0.4)]">
+        <button id="tabRadarBtn" class="flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-semibold bg-white/20 text-white shadow-md border border-white/20 backdrop-blur-md transition-all duration-200">
+          <i data-lucide="send" class="w-3.5 h-3.5 text-blue-400"></i>
+          <span>Transfer</span>
+        </button>
+        <button id="tabSyncBtn" class="flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-medium text-white/60 hover:text-white transition-all duration-200">
+          <i data-lucide="folder-sync" class="w-3.5 h-3.5 text-emerald-400"></i>
+          <span>Folder Sync</span>
+        </button>
+      </nav>
+
+      <!-- Action Buttons & Identity -->
+      <div class="flex items-center space-x-2.5">
+        <!-- QR Code Button -->
+        <button id="qrBtn" class="flex items-center space-x-1.5 apple-btn-glass px-3.5 py-1.5 rounded-full text-xs font-medium transition" title="Scan QR Code to open on mobile">
+          <i data-lucide="qr-code" class="w-3.5 h-3.5 text-blue-400"></i>
+          <span class="hidden sm:inline">QR Code</span>
+        </button>
+
+        <!-- Current Identity (Custom Device Name Editable) -->
+        <div class="flex items-center space-x-2.5 bg-white/[0.08] border border-white/15 hover:border-white/30 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/25 px-3.5 py-1.5 rounded-full backdrop-blur-xl transition shadow-sm">
+          <div id="selfAvatar" class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white bg-gradient-to-tr from-blue-600 to-indigo-600 shadow-sm shrink-0 border border-white/20">
+            ?
+          </div>
+          <div class="flex items-center space-x-1.5 text-xs">
+            <span class="text-white/60 shrink-0 font-normal">You:</span>
+            <input 
+              type="text" 
+              id="selfNameInput" 
+              maxlength="32" 
+              class="bg-transparent text-white font-medium focus:outline-none w-24 sm:w-32 text-xs hover:text-blue-200 focus:text-white transition placeholder-white/40" 
+              placeholder="Device Name" 
+              title="Click to edit device name (Press Enter to save)" 
+            />
+            <button id="editNameBtn" class="text-white/40 hover:text-blue-300 focus:outline-none shrink-0 transition" title="Edit name">
+              <i data-lucide="pencil" class="w-3 h-3"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- TAB 1: RADAR & TRANSFER STAGE -->
+  <main id="radarStage" class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 flex flex-col items-center justify-between relative overflow-hidden">
+    
+    <!-- Top Action Toolbar for Quick Sending -->
+    <div class="w-full flex items-center justify-between flex-wrap gap-2.5 mb-3 z-20">
+      <div class="flex items-center space-x-2.5">
+        <button id="broadcastAllBtn" class="flex items-center space-x-1.5 apple-btn-primary px-4 py-2 rounded-xl text-xs font-semibold shadow-lg">
+          <i data-lucide="radio-tower" class="w-3.5 h-3.5"></i>
+          <span>Broadcast to All</span>
+        </button>
+        <button type="button" id="selectFolderGlobalBtn" class="flex items-center space-x-1.5 apple-btn-glass px-4 py-2 rounded-xl text-xs font-medium cursor-pointer select-none">
+          <i data-lucide="folder" class="w-3.5 h-3.5 text-amber-400"></i>
+          <span>Share Folder</span>
+        </button>
+        <button type="button" id="selectFilesGlobalBtn" class="flex items-center space-x-1.5 apple-btn-glass px-4 py-2 rounded-xl text-xs font-medium cursor-pointer select-none">
+          <i data-lucide="file-up" class="w-3.5 h-3.5 text-blue-400"></i>
+          <span>Share Files</span>
+        </button>
+      </div>
+
+      <div class="flex items-center space-x-2.5">
+        <button id="toggleMultiSelectBtn" class="flex items-center space-x-1.5 apple-btn-glass px-3.5 py-2 rounded-xl text-xs font-medium">
+          <i data-lucide="check-square" class="w-3.5 h-3.5 text-blue-400"></i>
+          <span id="multiSelectLabel">Multi-Select</span>
+        </button>
+        <button id="sendToSelectedBtn" class="hidden flex items-center space-x-1.5 apple-btn-primary px-4 py-2 rounded-xl text-xs font-semibold">
+          <i data-lucide="send" class="w-3.5 h-3.5"></i>
+          <span id="sendSelectedCount">Send to Selected (0)</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Radar Canvas Area -->
+    <div id="dropZoneGlobal" class="w-full relative py-8 flex-1 flex flex-col items-center justify-center min-h-[380px]">
+      <!-- Radar frosted ripple lines -->
+      <div class="radar-circle w-64 h-64"></div>
+      <div class="radar-circle w-96 h-96"></div>
+      <div class="radar-circle w-[520px] h-[520px]"></div>
+
+      <!-- Center Device Marker (Self) -->
+      <div class="relative z-10 flex flex-col items-center mb-8">
+        <div class="relative">
+          <div class="absolute -inset-3 rounded-full bg-blue-500/20 blur-md animate-ping-slow"></div>
+          <div id="selfRadarBadge" class="w-18 h-18 p-4 rounded-full bg-white/[0.08] backdrop-blur-2xl border-2 border-[#007AFF] shadow-[0_0_35px_rgba(0,122,255,0.4),inset_0_1px_2px_rgba(255,255,255,0.5)] flex items-center justify-center text-blue-400 transition-transform hover:scale-105">
+            <i id="selfIcon" data-lucide="smartphone" class="w-8 h-8"></i>
+          </div>
+        </div>
+        <p class="text-xs text-white/70 mt-2.5 font-medium tracking-wide">This Device</p>
+      </div>
+
+      <!-- Discovered Peers Container -->
+      <div id="peerGrid" class="w-full max-w-4xl grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4.5 z-10">
+        <!-- Peer items dynamically rendered here -->
+      </div>
+
+      <!-- Empty State -->
+      <div id="emptyPeerState" class="text-center z-10 py-7 px-8 max-w-lg space-y-3.5 apple-glass">
+        <div>
+          <p class="text-sm text-white font-semibold tracking-tight">Looking for devices on the same Wi-Fi...</p>
+          <p class="text-xs text-white/60 mt-1.5 leading-relaxed">Open <span id="emptyStateLink" class="text-blue-400 font-semibold font-mono">http://filetrans.local:8080</span> or <span id="emptyStateIp" class="text-white font-semibold font-mono">http://&lt;IP&gt;:8080</span> on other devices.</p>
+        </div>
+        <div>
+          <button id="emptyStateQrBtn" class="inline-flex items-center space-x-1.5 apple-btn-glass text-blue-300 hover:text-white px-4 py-2 rounded-full text-xs font-medium transition shadow-sm">
+            <i data-lucide="qr-code" class="w-3.5 h-3.5"></i>
+            <span>Show QR Code for Mobile</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Transfers Section -->
+    <div id="transfersSection" class="w-full max-w-2xl mt-5 space-y-3 hidden">
+      <div class="flex items-center justify-between px-1.5">
+        <h3 class="text-xs font-bold text-white/60 uppercase tracking-wider">Active Transfers</h3>
+        <button id="clearAllTransfersBtn" class="text-xs text-white/60 hover:text-white transition font-medium">Clear Finished</button>
+      </div>
+      <div id="transfersList" class="space-y-3"></div>
+    </div>
+  </main>
+
+  <!-- TAB 2: FOLDER SYNC PANEL -->
+  <main id="syncStage" class="flex-1 max-w-5xl w-full mx-auto p-4 md:p-6 hidden flex flex-col space-y-6">
+    <!-- Sync Header & Guidance -->
+    <div class="apple-glass p-6 flex items-start justify-between flex-wrap gap-4">
+      <div>
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-400/30 shadow-lg shadow-emerald-500/20">
+            <i data-lucide="folder-sync" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-white tracking-tight">Folder Syncing Across PCs</h2>
+            <p class="text-xs text-white/60 mt-0.5">Keep folders synchronized between desktop computers on your local network.</p>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center space-x-3.5">
+        <label class="flex items-center space-x-2 text-xs text-white/80 cursor-pointer select-none">
+          <input type="checkbox" id="autoSyncToggle" class="rounded bg-black/40 border-white/20 text-blue-500 focus:ring-0 w-4 h-4 cursor-pointer" />
+          <span>Auto-Sync (Every 30s)</span>
+        </label>
+        <button id="syncNowBtn" class="flex items-center space-x-1.5 bg-gradient-to-b from-[#34C759] to-[#28CD41] hover:brightness-110 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-lg shadow-emerald-600/30 border border-white/30 transition hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+          <span>Compare & Sync Now</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Sync Configuration Cards Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <!-- Card 1: Local Folder -->
+      <div class="apple-glass p-6 space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-2">
+            <i data-lucide="hard-drive" class="w-4 h-4 text-blue-400"></i>
+            <span>Local Sync Folder</span>
+          </h3>
+          <span id="localFolderStatusBadge" class="text-[11px] font-medium bg-white/10 text-white/60 px-2.5 py-0.5 rounded-full border border-white/15">Not Selected</span>
+        </div>
+
+        <div id="localFolderInfoBox" class="apple-glass-well p-5 text-center space-y-2.5 transition-all">
+          <div class="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-400 flex items-center justify-center mx-auto border border-amber-400/25 shadow-md shadow-amber-500/10">
+            <i data-lucide="folder" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <p id="localFolderName" class="text-sm font-semibold text-white">No Folder Chosen</p>
+            <p id="localFolderMeta" class="text-xs text-white/60 mt-0.5">Select a folder on this PC to synchronize</p>
+          </div>
+        </div>
+
+        <div class="flex space-x-2.5">
+          <label id="pickSyncFolderBtn" for="syncFolderInput" class="flex-1 py-2.5 px-3 rounded-xl apple-btn-glass text-xs font-medium transition flex items-center justify-center space-x-1.5 cursor-pointer select-none">
+            <i data-lucide="folder-open" class="w-3.5 h-3.5 text-amber-400"></i>
+            <span>Choose Local Folder</span>
+          </label>
+          <button id="rescanLocalFolderBtn" class="py-2.5 px-3 rounded-xl apple-btn-glass text-white/60 hover:text-white text-xs font-medium transition disabled:opacity-40" disabled title="Rescan folder files">
+            <i data-lucide="scan" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Card 2: Remote Peer & Sync Mode -->
+      <div class="apple-glass p-6 space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-2">
+            <i data-lucide="laptop" class="w-4 h-4 text-emerald-400"></i>
+            <span>Remote Sync Partner</span>
+          </h3>
+          <span id="remotePeerStatusBadge" class="text-[11px] font-medium bg-white/10 text-white/60 px-2.5 py-0.5 rounded-full border border-white/15">No Peer</span>
+        </div>
+
+        <div class="space-y-3.5">
+          <div>
+            <label class="block text-xs font-medium text-white/60 mb-1.5">Select Connected Device:</label>
+            <select id="syncPeerSelect" class="w-full bg-black/40 border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-400 backdrop-blur-md transition shadow-inner">
+              <option value="" class="bg-[#1a1c26] text-white">-- No peers connected --</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-white/60 mb-1.5">Sync Direction:</label>
+            <select id="syncDirectionSelect" class="w-full bg-black/40 border border-white/15 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-400 backdrop-blur-md transition shadow-inner">
+              <option value="bidirectional" class="bg-[#1a1c26] text-white">Bi-directional (Keep both PCs identical)</option>
+              <option value="push" class="bg-[#1a1c26] text-white">Push (This PC → Remote PC)</option>
+              <option value="pull" class="bg-[#1a1c26] text-white">Pull (Remote PC → This PC)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="text-[11px] text-white/60 flex items-center space-x-2 bg-black/25 p-3 rounded-xl border border-white/10 backdrop-blur-md">
+          <i data-lucide="shield-check" class="w-4 h-4 text-emerald-400 shrink-0"></i>
+          <span>Direct WebRTC P2P sync. Files remain 100% on your local network.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sync Statistics & Activity Dashboard -->
+    <div class="apple-glass p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-xs font-bold text-white uppercase tracking-wider flex items-center space-x-2">
+          <i data-lucide="activity" class="w-4 h-4 text-blue-400"></i>
+          <span>Sync Status & Activity</span>
+        </h3>
+        <span id="syncOverallStateBadge" class="text-xs font-semibold text-white/60">Ready</span>
+      </div>
+
+      <!-- Quick Metrics Grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <div class="apple-glass-well p-3.5">
+          <p class="text-[11px] text-white/60 font-medium">Local Files</p>
+          <p id="metricLocalFiles" class="text-sm font-bold text-white mt-0.5">0</p>
+        </div>
+        <div class="apple-glass-well p-3.5">
+          <p class="text-[11px] text-white/60 font-medium">Remote Files</p>
+          <p id="metricRemoteFiles" class="text-sm font-bold text-white mt-0.5">-</p>
+        </div>
+        <div class="apple-glass-well p-3.5">
+          <p class="text-[11px] text-white/60 font-medium">Files to Upload</p>
+          <p id="metricPendingUploads" class="text-sm font-bold text-blue-400 mt-0.5">0</p>
+        </div>
+        <div class="apple-glass-well p-3.5">
+          <p class="text-[11px] text-white/60 font-medium">Files to Download</p>
+          <p id="metricPendingDownloads" class="text-sm font-bold text-emerald-400 mt-0.5">0</p>
+        </div>
+      </div>
+
+      <!-- Sync Activity Log -->
+      <div>
+        <div class="flex items-center justify-between text-xs text-white/60 mb-2 px-1">
+          <span class="font-medium">Log Stream</span>
+          <button id="clearSyncLogBtn" class="text-[11px] text-white/50 hover:text-white transition font-medium">Clear Log</button>
+        </div>
+        <div id="syncLogStream" class="apple-glass-well p-3.5 text-[11px] font-mono text-white/80 h-44 overflow-y-auto space-y-1">
+          <p class="text-white/40">Select a local folder and sync partner to begin synchronization.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Hidden File & Folder Inputs (positioned off-screen so native label click always works) -->
+  <input type="file" id="fileInput" style="position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none;" multiple />
+  <input type="file" id="folderInput" style="position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none;" webkitdirectory directory multiple />
+  <input type="file" id="syncFolderInput" style="position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none;" webkitdirectory directory multiple />
+
+  <!-- QR Code Modal (Heavy Liquid Frosted Glass) -->
+  <div id="qrModal" class="fixed inset-0 bg-black/60 backdrop-blur-2xl z-50 flex items-center justify-center p-4 hidden">
+    <div class="apple-glass-modal p-6 max-w-sm w-full space-y-5 text-center relative animate-in fade-in zoom-in-95">
+      <button id="closeQrModalBtn" class="absolute top-4 right-4 text-white/60 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+      
+      <div class="space-y-1 pt-1">
+        <h3 class="font-bold text-white text-base tracking-tight">Scan to Connect</h3>
+        <p class="text-xs text-white/60">Scan with your phone's camera on the same Wi-Fi</p>
+      </div>
+
+      <!-- QR Code Container -->
+      <div class="flex justify-center p-4 bg-white rounded-2xl shadow-xl mx-auto w-fit">
+        <div id="qrcodeCanvas"></div>
+      </div>
+
+      <!-- Target URL Box with Copy Button -->
+      <div class="space-y-2.5">
+        <div class="apple-glass-well p-2.5 flex items-center justify-between text-xs">
+          <span id="qrUrlText" class="font-mono text-white/80 truncate text-[11px] select-all px-1">http://...</span>
+          <button id="copyQrUrlBtn" class="text-blue-300 hover:text-white ml-2 font-medium shrink-0 flex items-center space-x-1 bg-blue-500/20 hover:bg-blue-500/30 px-3 py-1.5 rounded-xl border border-blue-400/30 transition shadow-sm" title="Copy URL">
+            <i data-lucide="copy" class="w-3 h-3"></i>
+            <span>Copy</span>
+          </button>
+        </div>
+
+        <div class="flex justify-center space-x-3 text-[11px] text-white/60">
+          <button id="qrToggleIpBtn" class="hover:text-blue-300 underline font-semibold text-blue-400 transition">Direct IP</button>
+          <span>•</span>
+          <button id="qrToggleMdnsBtn" class="hover:text-blue-300 underline font-medium text-white/60 transition">.local Domain</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Incoming Transfer Modal (Enhanced for Files and Folders) -->
+  <div id="incomingModal" class="fixed inset-0 bg-black/60 backdrop-blur-2xl z-[100] flex items-center justify-center p-4 hidden">
+    <div class="apple-glass-modal p-6 max-w-md w-full space-y-5 animate-in fade-in zoom-in-95">
+      <div class="flex items-center space-x-3.5">
+        <div id="incomingModalIconContainer" class="w-12 h-12 rounded-2xl bg-blue-500/20 text-blue-400 flex items-center justify-center border border-blue-400/30 shadow-lg shadow-blue-500/25 shrink-0">
+          <i id="incomingModalIcon" data-lucide="download-cloud" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <h3 id="incomingModalTitle" class="font-bold text-white text-base tracking-tight">Incoming Transfer Request</h3>
+          <p id="incomingSenderText" class="text-xs text-white/60 mt-0.5">Device wants to send you items</p>
+        </div>
+      </div>
+
+      <div class="apple-glass-well p-4 flex items-center space-x-3.5">
+        <div id="incomingFileBadgeIcon" class="w-10 h-10 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-white/90 shrink-0">
+          <i data-lucide="file" class="w-5 h-5 text-blue-400"></i>
+        </div>
+        <div class="overflow-hidden flex-1">
+          <p id="incomingFileName" class="text-sm font-semibold truncate text-white">sample_document.pdf</p>
+          <p id="incomingFileSize" class="text-xs text-white/60 mt-0.5 font-normal">12.5 MB</p>
+        </div>
+      </div>
+
+      <div class="flex space-x-3 pt-2">
+        <button id="declineBtn" class="flex-1 py-2.5 px-4 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 text-white text-sm font-medium transition hover:scale-[1.01] shadow-sm">
+          Decline
+        </button>
+        <button id="acceptBtn" class="flex-1 py-2.5 px-4 rounded-xl apple-btn-primary text-sm font-semibold transition flex items-center justify-center space-x-1.5">
+          <i data-lucide="check" class="w-4 h-4"></i>
+          <span>Accept & Start</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2.5 pointer-events-none"></div>
+
+  <script src="/app.js?v=4.1"></script>
+</body>
+</html>
