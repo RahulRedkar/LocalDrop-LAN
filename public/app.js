@@ -109,6 +109,27 @@ const metricPendingDownloads = document.getElementById('metricPendingDownloads')
 const syncLogStream = document.getElementById('syncLogStream');
 const clearSyncLogBtn = document.getElementById('clearSyncLogBtn');
 
+// UI Elements: Folder Sync Progress & Comparison Modal
+const syncProgressModal = document.getElementById('syncProgressModal');
+const closeSyncProgressModalBtn = document.getElementById('closeSyncProgressModalBtn');
+const cancelSyncModalBtn = document.getElementById('cancelSyncModalBtn');
+const actionSyncModalBtn = document.getElementById('actionSyncModalBtn');
+const actionSyncModalBtnText = document.getElementById('actionSyncModalBtnText');
+const syncModalTitle = document.getElementById('syncModalTitle');
+const syncModalSubtitle = document.getElementById('syncModalSubtitle');
+const syncModalPhaseBadge = document.getElementById('syncModalPhaseBadge');
+const syncModalCurrentOp = document.getElementById('syncModalCurrentOp');
+const syncModalFileCount = document.getElementById('syncModalFileCount');
+const syncModalProgressBar = document.getElementById('syncModalProgressBar');
+const syncModalStatusDetail = document.getElementById('syncModalStatusDetail');
+const syncModalPercent = document.getElementById('syncModalPercent');
+const syncModalTotalFiles = document.getElementById('syncModalTotalFiles');
+const syncModalIdenticalFiles = document.getElementById('syncModalIdenticalFiles');
+const syncModalToSendFiles = document.getElementById('syncModalToSendFiles');
+const syncModalToReceiveFiles = document.getElementById('syncModalToReceiveFiles');
+const syncModalIcon = document.getElementById('syncModalIcon');
+const syncModalIconContainer = document.getElementById('syncModalIconContainer');
+
 // QR Code State
 let serverIpUrl = '';
 let serverMdnsUrl = '';
@@ -507,6 +528,21 @@ function initWebSocket() {
       // Folder Sync Protocol Messages
       case 'sync-manifest': {
         handleSyncManifestReceived(data);
+        break;
+      }
+
+      case 'sync-status': {
+        handleSyncStatusReceived(data);
+        break;
+      }
+
+      case 'sync-diff-result': {
+        handleSyncDiffResultReceived(data);
+        break;
+      }
+
+      case 'sync-cancel': {
+        handleSyncCancelReceived(data);
         break;
       }
 
@@ -946,9 +982,11 @@ function handleIncomingFileRequest(data) {
   if (data.file.isFolder) {
     incomingFileBadgeIcon.innerHTML = '<i data-lucide="folder" class="w-5 h-5 text-amber-400"></i>';
     incomingModalTitle.textContent = 'Incoming Folder Transfer';
+    acceptBtn.innerHTML = '<i data-lucide="folder-down" class="w-4 h-4"></i><span>Select Folder & Receive</span>';
   } else {
     incomingFileBadgeIcon.innerHTML = '<i data-lucide="file" class="w-5 h-5 text-blue-400"></i>';
     incomingModalTitle.textContent = 'Incoming File Request';
+    acceptBtn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i><span>Accept & Start</span>';
   }
 
   // Make modal strictly visible
@@ -977,14 +1015,24 @@ acceptBtn.onclick = async () => {
 
   let chosenHandle = null;
 
-  // Option 1: If browser supports Native File System Directory Picker (Chrome/Brave/Edge in secure/localhost context)
-  if (file.isFolder && window.isSecureContext && typeof window.showDirectoryPicker === 'function') {
-    try {
-      showToast(`Choose destination folder for "${file.name}"...`, 'info');
-      chosenHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-    } catch (err) {
-      console.log('showDirectoryPicker cancelled or unavailable, will download via browser:', err);
-      chosenHandle = null;
+  // Direct Folder Placement: Receiver picks or creates destination folder on their PC (NO ZIP!)
+  if (file.isFolder) {
+    if (window.isSecureContext && typeof window.showDirectoryPicker === 'function') {
+      try {
+        showToast(`Select destination folder on your PC for "${file.name}"...`, 'info');
+        const parentHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        // Automatically create or get the target folder inside the picked directory
+        chosenHandle = await parentHandle.getDirectoryHandle(file.name, { create: true });
+        showToast(`Saving directly into folder "${chosenHandle.name}"`, 'success');
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          showToast('Folder selection cancelled. Please pick a destination folder to accept.', 'warn');
+          return; // KEEP MODAL OPEN so user can retry or decline!
+        }
+        console.warn('showDirectoryPicker error:', err);
+      }
+    } else {
+      showToast('Notice: Direct folder saving requires Chrome, Edge, or HTTPS.', 'warn');
     }
   }
 
@@ -1018,10 +1066,11 @@ acceptBtn.onclick = async () => {
 
   createTransferUI(transferKey, file.name, file.size, 'inbound', senderName);
 
-  // Stream-to-Disk: Trigger native browser download directly from server stream
-  // 0 MB RAM footprint on receiver, preventing browser OOM 'Aw Snap' crashes
-  const downloadUrl = `/api/transfer/download/${fileId}`;
-  triggerDownload(downloadUrl, file.name);
+  if (!file.isFolder) {
+    // Single file: Trigger native browser download directly from server stream
+    const downloadUrl = `/api/transfer/download/${fileId}`;
+    triggerDownload(downloadUrl, file.name);
+  }
 
   ws.send(JSON.stringify({
     type: 'file-response',
@@ -1053,18 +1102,25 @@ declineBtn.onclick = () => {
 function handleFileResponse(data) {
   const transferKey = `${data.fileId}_${data.sender}`;
   const transfer = activeTransfers.get(transferKey);
+  const queueData = outboundQueue.get(data.fileId);
 
   if (data.accepted) {
     showToast(`${data.senderName} accepted the transfer`, 'success');
     const speedEl = document.getElementById(`speed-${transferKey}`);
-    if (speedEl) speedEl.textContent = 'Waiting for receiver stream...';
-    // Fallback: If stream-ready doesn't trigger within 2s, start streaming
-    setTimeout(() => {
-      const t = activeTransfers.get(transferKey);
-      if (t && t.status !== 'transferring' && t.status !== 'completed' && !t.cancelled) {
-        startSendingStreamOutbound(data.fileId);
-      }
-    }, 2000);
+    if (speedEl) speedEl.textContent = 'Starting transfer...';
+
+    if (queueData && queueData.isFolder) {
+      // FOLDER TRANSFER: Stream directly peer-to-peer / WS relay so receiver writes files directly to disk (NO ZIP!)
+      startSendingOutbound(data.sender, data.fileId);
+    } else {
+      // SINGLE FILE: Stream to receiver's browser download manager
+      setTimeout(() => {
+        const t = activeTransfers.get(transferKey);
+        if (t && t.status !== 'transferring' && t.status !== 'completed' && !t.cancelled) {
+          startSendingStreamOutbound(data.fileId);
+        }
+      }, 500);
+    }
   } else {
     showToast(`${data.senderName} declined the transfer`, 'error');
     cancelTransfer(transferKey, false, 'Declined by recipient');
@@ -1360,6 +1416,16 @@ function handleIncomingMetaEnvelope(senderId, meta) {
   console.log(`[Transfer] Incoming transfer manifest for "${meta.name}" (${meta.files.length} files, ${meta.totalSize} bytes)`);
 }
 
+function getCleanFolderRelativePath(folderName, relPath) {
+  let clean = (relPath || '').replace(/^[\\/]+/, '');
+  if (folderName && clean.startsWith(folderName + '/')) {
+    clean = clean.substring(folderName.length + 1);
+  } else if (folderName && clean.startsWith(folderName + '\\')) {
+    clean = clean.substring(folderName.length + 1);
+  }
+  return clean;
+}
+
 function handleIncomingFileHeader(senderId, header) {
   const state = getOrCreateReceiver(senderId);
   state.currentFileIndex = header.fileIndex;
@@ -1368,18 +1434,27 @@ function handleIncomingFileHeader(senderId, header) {
 
   // Handle 0-byte file immediately
   if (header.size === 0) {
-    state.accumulatedFiles.push({
-      relativePath: header.relativePath,
-      name: header.relativePath.split('/').pop(),
-      blob: new Blob([], { type: 'application/octet-stream' })
-    });
+    if (state.destDirHandle) {
+      const cleanRelPath = getCleanFolderRelativePath(state.meta ? state.meta.name : '', header.relativePath);
+      writeBlobToDirectoryHandle(state.destDirHandle, cleanRelPath, new Blob([], { type: 'application/octet-stream' })).catch(err => {
+        console.error('Failed writing 0-byte file to disk:', err);
+      });
+    } else {
+      state.accumulatedFiles.push({
+        relativePath: header.relativePath,
+        name: header.relativePath.split('/').pop(),
+        blob: new Blob([], { type: 'application/octet-stream' })
+      });
+    }
   }
 }
 
 // Helper: Recursively write a file/blob to a chosen directory handle with directory tree recreation
 async function writeBlobToDirectoryHandle(rootDirHandle, relativePath, blob) {
-  // Normalize path separators
-  const parts = relativePath.split('/').filter(p => p.length > 0);
+  const clean = (relativePath || '').replace(/^[\\/]+/, '');
+  const parts = clean.split(/[\\/]+/).filter(p => p.length > 0);
+  if (parts.length === 0) return;
+
   let currentHandle = rootDirHandle;
 
   // Create any needed subdirectories
@@ -1415,13 +1490,22 @@ async function handleIncomingBinaryBuffer(senderId, arrayBuffer) {
   const targetFileMeta = state.meta.files[state.currentFileIndex];
   if (targetFileMeta && state.currentFileBytes >= targetFileMeta.size) {
     const fileBlob = new Blob(state.receivedFileBuffers, { type: targetFileMeta.mime || 'application/octet-stream' });
-    state.accumulatedFiles.push({
-      relativePath: targetFileMeta.relativePath,
-      name: targetFileMeta.name || targetFileMeta.relativePath.split('/').pop(),
-      blob: fileBlob
-    });
+    
+    if (state.destDirHandle) {
+      // Direct Disk Streaming: Write file directly to folder on disk (0 RAM accumulation, NO ZIP!)
+      const cleanRelPath = getCleanFolderRelativePath(state.meta.name, targetFileMeta.relativePath);
+      writeBlobToDirectoryHandle(state.destDirHandle, cleanRelPath, fileBlob).catch(err => {
+        console.error('Failed writing file to disk:', err);
+      });
+    } else {
+      state.accumulatedFiles.push({
+        relativePath: targetFileMeta.relativePath,
+        name: targetFileMeta.name || targetFileMeta.relativePath.split('/').pop(),
+        blob: fileBlob
+      });
+    }
 
-    // Reset buffer for next file immediately
+    // Reset buffer for next file immediately to keep memory footprint near 0 MB
     state.receivedFileBuffers = [];
     state.currentFileBytes = 0;
   }
@@ -1435,15 +1519,20 @@ async function finalizeIncomingTransfer(senderId, fileId) {
   const transfer = activeTransfers.get(transferKey);
   if (transfer && transfer.cancelled) return;
 
-  // Flush any remaining buffers for current file into accumulatedFiles
+  // Flush any remaining buffers for current file into disk or list
   if (state.receivedFileBuffers.length > 0 && state.meta.files && state.meta.files[state.currentFileIndex]) {
     const targetFileMeta = state.meta.files[state.currentFileIndex];
     const fileBlob = new Blob(state.receivedFileBuffers, { type: targetFileMeta.mime || 'application/octet-stream' });
-    state.accumulatedFiles.push({
-      relativePath: targetFileMeta.relativePath,
-      name: targetFileMeta.name || targetFileMeta.relativePath.split('/').pop(),
-      blob: fileBlob
-    });
+    if (state.destDirHandle) {
+      const cleanRelPath = getCleanFolderRelativePath(state.meta.name, targetFileMeta.relativePath);
+      await writeBlobToDirectoryHandle(state.destDirHandle, cleanRelPath, fileBlob);
+    } else {
+      state.accumulatedFiles.push({
+        relativePath: targetFileMeta.relativePath,
+        name: targetFileMeta.name || targetFileMeta.relativePath.split('/').pop(),
+        blob: fileBlob
+      });
+    }
     state.receivedFileBuffers = [];
     state.currentFileBytes = 0;
   }
@@ -1453,35 +1542,20 @@ async function finalizeIncomingTransfer(senderId, fileId) {
 
   try {
     if (destDirHandle) {
-      // 1. Directory chosen via Native File System Access API
-      let targetFolderHandle = destDirHandle;
-      if (isFolder && destDirHandle.name !== state.meta.name) {
-        targetFolderHandle = await destDirHandle.getDirectoryHandle(state.meta.name, { create: true });
-      }
+      // 1. All files were written directly to the chosen folder on disk
+      showToast(`Folder "${state.meta.name}" saved directly to your computer!`, 'success');
+    } else if (state.accumulatedFiles.length > 0) {
+      // 2. Direct file downloads (no zip!)
       for (const item of state.accumulatedFiles) {
-        let cleanRelPath = item.relativePath;
-        if (isFolder && cleanRelPath.startsWith(state.meta.name + '/')) {
-          cleanRelPath = cleanRelPath.substring(state.meta.name.length + 1);
-        }
-        await writeBlobToDirectoryHandle(targetFolderHandle, cleanRelPath, item.blob);
+        triggerDownload(item.blob, item.relativePath.split('/').pop() || item.name);
       }
-      showToast(`Saved "${state.meta.name}" to chosen directory!`, 'success');
-    } else if (isFolder || state.accumulatedFiles.length > 1) {
-      // 2. Folder or multiple files: package as zip and trigger native browser download
-      showToast(`Preparing "${state.meta.name}.zip"...`, 'info');
-      await downloadAsZip(state.meta.name, state.accumulatedFiles);
-      showToast(`Downloaded "${state.meta.name}.zip"!`, 'success');
-    } else if (state.accumulatedFiles.length === 1) {
-      // 3. Single file: trigger direct browser download
-      const single = state.accumulatedFiles[0];
-      triggerDownload(single.blob, state.meta.name || single.name);
-      showToast(`Downloaded "${state.meta.name}"!`, 'success');
+      showToast(`Downloaded ${state.accumulatedFiles.length} file(s)!`, 'success');
     } else {
       showToast(`Transfer of "${state.meta.name}" completed!`, 'success');
     }
   } catch (err) {
     console.error('[Finalize Transfer] Error delivering download:', err);
-    showToast(`Download notice: ${err.message}`, 'error');
+    showToast(`Notice: ${err.message}`, 'error');
   }
 
   if (transfer) transfer.status = 'completed';
@@ -1492,26 +1566,6 @@ async function finalizeIncomingTransfer(senderId, fileId) {
   state.currentFileBytes = 0;
   state.accumulatedFiles = [];
   state.destDirHandle = null;
-}
-
-async function downloadAsZip(folderName, files) {
-  const safeFolderName = (folderName || 'folder').replace(/[\\/:*?"<>|]/g, '_');
-  if (typeof JSZip !== 'undefined') {
-    const zip = new JSZip();
-    files.forEach(item => {
-      let relPath = item.relativePath || item.name;
-      if (relPath.startsWith(safeFolderName + '/')) {
-        relPath = relPath.substring(safeFolderName.length + 1);
-      }
-      zip.file(relPath, item.blob);
-    });
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
-    triggerDownload(zipBlob, `${safeFolderName}.zip`);
-  } else {
-    files.forEach(item => {
-      triggerDownload(item.blob, item.relativePath.split('/').pop());
-    });
-  }
 }
 
 function updateTransferCompleted(transferKey) {
@@ -1786,6 +1840,17 @@ async function streamQueueViaWebSocket(queueData, targetPeerId) {
 
         if (transfer.cancelled || ws.readyState !== WebSocket.OPEN) break;
 
+        // 500 Mbps Rate Limiter
+        const MAX_SPEED_BPS = (500 * 1024 * 1024) / 8;
+        const targetElapsedMs = (totalOffset * 1000) / MAX_SPEED_BPS;
+        const actualElapsedMs = Date.now() - startTime;
+        if (actualElapsedMs < targetElapsedMs) {
+          const waitMs = targetElapsedMs - actualElapsedMs;
+          await new Promise(r => setTimeout(r, waitMs));
+        }
+
+        if (transfer.cancelled || ws.readyState !== WebSocket.OPEN) break;
+
         const chunkEnd = Math.min(blockOffset + CHUNK_SIZE, blockBuffer.byteLength);
         const chunkBuffer = blockBuffer.slice(blockOffset, chunkEnd);
 
@@ -1894,6 +1959,17 @@ async function streamQueueToPeer(channel, queueData, targetPeerId) {
 
         if (transfer.cancelled || channel.readyState !== 'open') break;
 
+        // 500 Mbps Rate Limiter
+        const MAX_SPEED_BPS = (500 * 1024 * 1024) / 8;
+        const targetElapsedMs = (totalOffset * 1000) / MAX_SPEED_BPS;
+        const actualElapsedMs = Date.now() - startTime;
+        if (actualElapsedMs < targetElapsedMs) {
+          const waitMs = targetElapsedMs - actualElapsedMs;
+          await new Promise(r => setTimeout(r, waitMs));
+        }
+
+        if (transfer.cancelled || channel.readyState !== 'open') break;
+
         const chunkEnd = Math.min(blockOffset + CHUNK_SIZE, blockBuffer.byteLength);
         const chunkBuffer = blockBuffer.slice(blockOffset, chunkEnd);
 
@@ -1935,8 +2011,98 @@ async function streamQueueToPeer(channel, queueData, targetPeerId) {
 const syncFolderInput = document.getElementById('syncFolderInput');
 let localSyncDirHandle = null;
 let localFilesFallbackMap = new Map(); // path -> File object (for Brave / fallback mode)
-let localManifest = []; // Array of { path, size, lastModified }
+let localFileHandlesMap = new Map();   // path -> FileSystemFileHandle for instant O(1) file retrieval
+let localManifest = [];                // Array of { path, size, lastModified }
 let autoSyncInterval = null;
+let activeSyncPeerId = null;
+let activePendingDelta = null;
+
+// Modal Controller Functions
+function openSyncProgressModal(title, subtitle, phase = 'Phase 1/3') {
+  if (!syncProgressModal) return;
+  syncModalTitle.textContent = title || 'Folder Synchronization';
+  syncModalSubtitle.textContent = subtitle || 'Analyzing folders across devices...';
+  syncModalPhaseBadge.textContent = phase;
+  syncModalPhaseBadge.className = 'text-[10px] font-semibold bg-indigo-500/25 text-indigo-300 border border-indigo-400/30 px-2 py-0.5 rounded-full shrink-0';
+  syncModalCurrentOp.textContent = 'Initializing...';
+  syncModalFileCount.textContent = '0 / 0';
+  syncModalProgressBar.style.width = '0%';
+  syncModalProgressBar.className = 'h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 rounded-full transition-all duration-150';
+  syncModalStatusDetail.textContent = 'Preparing comparison...';
+  syncModalPercent.textContent = '0%';
+  syncModalTotalFiles.textContent = localManifest ? localManifest.length : '0';
+  syncModalIdenticalFiles.textContent = '-';
+  syncModalToSendFiles.textContent = '-';
+  syncModalToReceiveFiles.textContent = '-';
+  syncModalIconContainer.className = 'w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-400/30 shadow-lg shadow-indigo-500/25 shrink-0';
+  syncModalIcon.setAttribute('data-lucide', 'refresh-cw');
+  syncModalIcon.classList.add('animate-spin');
+  actionSyncModalBtn.classList.add('hidden');
+  cancelSyncModalBtn.textContent = 'Cancel Sync';
+  cancelSyncModalBtn.className = 'flex-1 py-2.5 px-4 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 text-white text-xs font-medium transition hover:scale-[1.01]';
+  syncProgressModal.classList.remove('hidden');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function updateSyncProgressModal(data) {
+  if (!syncProgressModal || syncProgressModal.classList.contains('hidden')) return;
+  if (data.title) syncModalTitle.textContent = data.title;
+  if (data.subtitle) syncModalSubtitle.textContent = data.subtitle;
+  if (data.phase) syncModalPhaseBadge.textContent = data.phase;
+  if (data.phaseClass) syncModalPhaseBadge.className = data.phaseClass;
+  if (data.currentOp) syncModalCurrentOp.textContent = data.currentOp;
+  if (data.fileCount) syncModalFileCount.textContent = data.fileCount;
+  if (data.percent !== undefined) {
+    const pct = Math.min(100, Math.max(0, Math.round(data.percent)));
+    syncModalProgressBar.style.width = `${pct}%`;
+    syncModalPercent.textContent = `${pct}%`;
+  }
+  if (data.statusDetail) syncModalStatusDetail.textContent = data.statusDetail;
+  if (data.total !== undefined) syncModalTotalFiles.textContent = data.total;
+  if (data.identical !== undefined) syncModalIdenticalFiles.textContent = data.identical;
+  if (data.toSend !== undefined) syncModalToSendFiles.textContent = data.toSend;
+  if (data.toReceive !== undefined) syncModalToReceiveFiles.textContent = data.toReceive;
+  if (data.icon) syncModalIcon.setAttribute('data-lucide', data.icon);
+  if (data.iconSpin !== undefined) {
+    if (data.iconSpin) syncModalIcon.classList.add('animate-spin');
+    else syncModalIcon.classList.remove('animate-spin');
+  }
+  if (data.iconContainerClass) syncModalIconContainer.className = data.iconContainerClass;
+  if (data.actionBtnText) {
+    actionSyncModalBtnText.textContent = data.actionBtnText;
+    actionSyncModalBtn.classList.remove('hidden');
+  } else if (data.hideActionBtn) {
+    actionSyncModalBtn.classList.add('hidden');
+  }
+  if (data.cancelBtnText) {
+    cancelSyncModalBtn.textContent = data.cancelBtnText;
+  }
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function closeSyncProgressModal() {
+  if (syncProgressModal) {
+    syncProgressModal.classList.add('hidden');
+  }
+}
+
+if (closeSyncProgressModalBtn) {
+  closeSyncProgressModalBtn.onclick = () => closeSyncProgressModal();
+}
+
+if (cancelSyncModalBtn) {
+  cancelSyncModalBtn.onclick = () => {
+    closeSyncProgressModal();
+    if (activeSyncPeerId && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'sync-cancel',
+        target: activeSyncPeerId
+      }));
+    }
+    syncOverallStateBadge.textContent = 'Idle';
+    syncOverallStateBadge.className = 'text-xs font-semibold text-white/50';
+  };
+}
 
 function updateSyncPeerSelect(peers) {
   if (!syncPeerSelect) return;
@@ -1969,20 +2135,21 @@ const localFolderInfoBox = document.getElementById('localFolderInfoBox');
 
 if (pickSyncFolderBtn) {
   pickSyncFolderBtn.onclick = (e) => {
-    // 1. If in a secure context (e.g. localhost or HTTPS) with modern Native File System Access API
+    // 1. Direct Disk Access API
     if (window.isSecureContext && typeof window.showDirectoryPicker === 'function') {
       e.preventDefault();
       window.showDirectoryPicker({ mode: 'readwrite' })
         .then(async (handle) => {
           localSyncDirHandle = handle;
           localFilesFallbackMap.clear();
+          localFileHandlesMap.clear();
           localFolderName.textContent = handle.name;
           localFolderStatusBadge.textContent = 'Direct Disk Access';
           localFolderStatusBadge.className = 'text-[11px] font-medium bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-400/30';
           rescanLocalFolderBtn.disabled = false;
 
           appendSyncLog(`Local sync folder chosen: "${handle.name}" (Direct Disk Mode)`, 'info');
-          await scanLocalSyncFolder();
+          await scanLocalSyncFolder(true);
         })
         .catch((err) => {
           if (err.name === 'AbortError') return;
@@ -1992,13 +2159,11 @@ if (pickSyncFolderBtn) {
       return;
     }
 
-    // 2. On LAN client HTTP connections (http://10.0.0.x:8080) or Brave without flags:
-    // DO NOT preventDefault! The native <label for="syncFolderInput"> click event directly triggers the OS folder picker dialog!
     appendSyncLog('Opening folder picker...', 'info');
   };
 }
 
-// Drag & drop folder directly onto the Local Sync Folder card
+// Drag & drop folder directly onto Local Sync Folder card
 if (localFolderInfoBox) {
   localFolderInfoBox.ondragover = (e) => {
     e.preventDefault();
@@ -2014,6 +2179,7 @@ if (localFolderInfoBox) {
     if (items.length > 0) {
       localSyncDirHandle = null;
       localFilesFallbackMap.clear();
+      localFileHandlesMap.clear();
 
       let folderName = 'Dropped Folder';
       const firstRel = items[0].relativePath;
@@ -2050,6 +2216,7 @@ if (syncFolderInput) {
     if (e.target.files.length === 0) return;
     localSyncDirHandle = null;
     localFilesFallbackMap.clear();
+    localFileHandlesMap.clear();
 
     const files = Array.from(e.target.files);
     const firstRel = files[0].webkitRelativePath || files[0].name;
@@ -2057,7 +2224,6 @@ if (syncFolderInput) {
 
     let totalBytes = 0;
     localManifest = files.map(file => {
-      // Relative path without the top folder name prefix for consistent syncing
       const relPath = file.webkitRelativePath 
         ? (file.webkitRelativePath.includes('/') ? file.webkitRelativePath.substring(file.webkitRelativePath.indexOf('/') + 1) : file.webkitRelativePath)
         : file.name;
@@ -2085,24 +2251,37 @@ if (syncFolderInput) {
 if (rescanLocalFolderBtn) {
   rescanLocalFolderBtn.onclick = async () => {
     if (localSyncDirHandle) {
-      await scanLocalSyncFolder();
+      await scanLocalSyncFolder(true);
     } else if (syncFolderInput) {
       syncFolderInput.click();
     }
   };
 }
 
-async function scanLocalSyncFolder() {
+// Resilient file indexer with non-blocking UI rendering and O(1) handle caching
+async function scanLocalSyncFolder(showModal = false, totalEstimate = 0) {
   if (localSyncDirHandle) {
     localFolderMeta.textContent = 'Scanning files...';
     appendSyncLog('Scanning local folder...', 'info');
 
+    if (showModal) {
+      openSyncProgressModal(
+        'Indexing Local Folder',
+        `Scanning files in "${localSyncDirHandle.name}"`,
+        'Phase 1/3: Local Indexing'
+      );
+    }
+
     localManifest = [];
+    localFileHandlesMap.clear();
     let totalBytes = 0;
+    let scannedCount = 0;
+    let lastYield = Date.now();
 
     async function traverse(dirHandle, currentPath) {
       for await (const entry of dirHandle.values()) {
         if (entry.kind === 'file') {
+          scannedCount++;
           const file = await entry.getFile();
           const relPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
           localManifest.push({
@@ -2110,7 +2289,24 @@ async function scanLocalSyncFolder() {
             size: file.size,
             lastModified: file.lastModified
           });
+          localFileHandlesMap.set(relPath, entry);
           totalBytes += file.size;
+
+          const now = Date.now();
+          if (now - lastYield > 80 || scannedCount % 60 === 0) {
+            lastYield = now;
+            const pct = totalEstimate > 0 ? (scannedCount / totalEstimate) * 100 : 0;
+            if (showModal) {
+              updateSyncProgressModal({
+                currentOp: `Indexing: ${entry.name}`,
+                fileCount: totalEstimate > 0 ? `${scannedCount} / ${totalEstimate}` : `${scannedCount} files`,
+                percent: pct,
+                statusDetail: `${scannedCount} files indexed (${formatBytes(totalBytes)})`,
+                total: scannedCount
+              });
+            }
+            await new Promise(r => setTimeout(r, 0));
+          }
         } else if (entry.kind === 'directory') {
           const nextPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
           await traverse(entry, nextPath);
@@ -2123,6 +2319,16 @@ async function scanLocalSyncFolder() {
       metricLocalFiles.textContent = localManifest.length;
       localFolderMeta.textContent = `${localManifest.length} files • ${formatBytes(totalBytes)}`;
       appendSyncLog(`Scan complete: ${localManifest.length} files (${formatBytes(totalBytes)})`, 'success');
+
+      if (showModal) {
+        updateSyncProgressModal({
+          currentOp: 'Index Complete',
+          fileCount: `${localManifest.length} / ${localManifest.length}`,
+          percent: 100,
+          statusDetail: `Indexed ${localManifest.length} files (${formatBytes(totalBytes)})`,
+          total: localManifest.length
+        });
+      }
     } catch (err) {
       appendSyncLog(`Scan error: ${err.message}`, 'error');
     }
@@ -2145,11 +2351,41 @@ if (syncNowBtn) {
       return;
     }
 
-    appendSyncLog(`Initiating sync with peer...`, 'info');
-    syncOverallStateBadge.textContent = 'Exchanging Manifests...';
+    const peer = peers.find(p => p.id === targetPeerId);
+    const peerName = peer ? peer.deviceName : 'Remote Peer';
+    activeSyncPeerId = targetPeerId;
 
-    // Refresh local manifest
-    await scanLocalSyncFolder();
+    openSyncProgressModal(
+      `Syncing with ${peerName}`,
+      'Comparing folders across devices...',
+      'Phase 1/3: Local Indexing'
+    );
+
+    appendSyncLog(`Initiating sync with ${peerName}...`, 'info');
+    syncOverallStateBadge.textContent = 'Comparing Folders...';
+    syncOverallStateBadge.className = 'text-xs font-semibold text-indigo-400';
+
+    // If never scanned or requested, scan local
+    if (localManifest.length === 0) {
+      await scanLocalSyncFolder(true);
+    } else {
+      updateSyncProgressModal({
+        currentOp: 'Local folder ready',
+        fileCount: `${localManifest.length} files`,
+        percent: 40,
+        statusDetail: `${localManifest.length} files indexed`,
+        total: localManifest.length
+      });
+    }
+
+    updateSyncProgressModal({
+      phase: 'Phase 2/3: Exchanging Manifests',
+      subtitle: `Transmitting ${localManifest.length} file records to ${peerName}...`,
+      currentOp: `Sending manifest to ${peerName}...`,
+      statusDetail: `Manifest size: ${localManifest.length} files. Awaiting peer comparison...`,
+      percent: 50,
+      total: localManifest.length
+    });
 
     // Send manifest to target peer
     ws.send(JSON.stringify({
@@ -2161,19 +2397,63 @@ if (syncNowBtn) {
   };
 }
 
-// Incoming remote manifest handler
+// Incoming remote manifest handler (Runs on Peer B)
 async function handleSyncManifestReceived(data) {
-  appendSyncLog(`Received manifest from ${data.senderName} (${data.manifest.length} files)`, 'info');
+  const senderPeerName = data.senderName || 'Remote Peer';
+  activeSyncPeerId = data.sender;
+  appendSyncLog(`Received manifest from ${senderPeerName} (${data.manifest.length} files)`, 'info');
   metricRemoteFiles.textContent = data.manifest.length;
 
   if (!localSyncDirHandle && localFilesFallbackMap.size === 0) {
     appendSyncLog('Remote peer requested sync, but no local folder is selected on this PC.', 'warn');
-    showToast(`${data.senderName} wants to sync folders. Select a local folder in "Folder Sync" tab!`, 'warn');
+    showToast(`${senderPeerName} wants to sync folders (${data.manifest.length} files). Select a local folder in "Folder Sync" tab!`, 'warn');
     return;
   }
 
-  // Rescan local to ensure fresh state
-  await scanLocalSyncFolder();
+  // Open modal on Receiver/Comparing device
+  openSyncProgressModal(
+    `Syncing with ${senderPeerName}`,
+    `Received ${data.manifest.length} file records from ${senderPeerName}`,
+    'Phase 1/3: Local Indexing'
+  );
+
+  // Notify sender that we received their manifest and are indexing local directory
+  ws.send(JSON.stringify({
+    type: 'sync-status',
+    target: data.sender,
+    phase: 'Phase 2/3: Peer Indexing',
+    subtitle: `${myDeviceName} is indexing local folder...`,
+    currentOp: `Indexing local files on ${myDeviceName}...`,
+    statusDetail: `Received ${data.manifest.length} file records from you. Indexing local directory...`,
+    percent: 60,
+    total: data.manifest.length
+  }));
+
+  // Index local folder with UI updates
+  if (localManifest.length === 0) {
+    await scanLocalSyncFolder(true, data.manifest.length);
+  }
+
+  updateSyncProgressModal({
+    phase: 'Phase 3/3: Comparing Files',
+    subtitle: `Comparing ${data.manifest.length} remote files with ${localManifest.length} local files...`,
+    currentOp: 'Comparing files and timestamps...',
+    statusDetail: 'Detecting missing files and timestamp differences...',
+    percent: 75,
+    total: Math.max(localManifest.length, data.manifest.length)
+  });
+
+  // Notify sender that comparison diffing is underway
+  ws.send(JSON.stringify({
+    type: 'sync-status',
+    target: data.sender,
+    phase: 'Phase 3/3: Comparing Files',
+    subtitle: `Comparing ${data.manifest.length} remote files with ${localManifest.length} local files...`,
+    currentOp: 'Comparing files and timestamps...',
+    statusDetail: 'Analyzing differences across 7,000+ files...',
+    percent: 75,
+    total: Math.max(localManifest.length, data.manifest.length)
+  }));
 
   const remoteManifest = data.manifest;
   const localMap = new Map(localManifest.map(f => [f.path, f]));
@@ -2181,27 +2461,81 @@ async function handleSyncManifestReceived(data) {
 
   const toDownload = []; // Files remote has that local needs
   const toUpload = [];   // Files local has that remote needs
+  let identicalCount = 0;
 
-  // Check remote files against local
-  remoteManifest.forEach(rf => {
+  // 1. Check remote files against local
+  for (let i = 0; i < remoteManifest.length; i++) {
+    const rf = remoteManifest[i];
     const lf = localMap.get(rf.path);
-    if (!lf || rf.lastModified > lf.lastModified) {
+    if (!lf) {
+      toDownload.push(rf);
+    } else if (rf.lastModified > lf.lastModified && rf.size !== lf.size) {
+      toDownload.push(rf);
+    } else if (rf.lastModified === lf.lastModified && rf.size === lf.size) {
+      identicalCount++;
+    } else if (rf.lastModified > lf.lastModified) {
       toDownload.push(rf);
     }
-  });
 
-  // Check local files against remote
-  localManifest.forEach(lf => {
+    if (i % 250 === 0) {
+      const pct = 75 + Math.round((i / (remoteManifest.length + localManifest.length)) * 20);
+      updateSyncProgressModal({
+        currentOp: `Diffing: ${rf.path}`,
+        percent: pct,
+        fileCount: `${i} / ${remoteManifest.length}`,
+        identical: identicalCount,
+        toReceive: toDownload.length
+      });
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+
+  // 2. Check local files against remote
+  for (let i = 0; i < localManifest.length; i++) {
+    const lf = localManifest[i];
     const rf = remoteMap.get(lf.path);
-    if (!rf || lf.lastModified > rf.lastModified) {
+    if (!rf) {
+      toUpload.push(lf);
+    } else if (lf.lastModified > rf.lastModified && lf.size !== rf.size) {
       toUpload.push(lf);
     }
-  });
+
+    if (i % 250 === 0) {
+      updateSyncProgressModal({
+        currentOp: `Diffing: ${lf.path}`,
+        toSend: toUpload.length
+      });
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
 
   metricPendingUploads.textContent = toUpload.length;
   metricPendingDownloads.textContent = toDownload.length;
+  const totalAnalyzed = Math.max(localManifest.length, remoteManifest.length);
+  const isInSync = toDownload.length === 0 && toUpload.length === 0;
 
-  if (toDownload.length === 0 && toUpload.length === 0) {
+  // Send the diff result to the other device so BOTH devices have the identical breakdown!
+  ws.send(JSON.stringify({
+    type: 'sync-diff-result',
+    target: data.sender,
+    totalAnalyzed,
+    identicalCount,
+    // Note: sender's "toSend" is receiver's "toDownload", and vice-versa!
+    toSendCount: toDownload.length,
+    toReceiveCount: toUpload.length,
+    inSync: isInSync
+  }));
+
+  // Update receiver's modal with diff results
+  applyDiffResultToModal({
+    totalAnalyzed,
+    identicalCount,
+    toSendCount: toUpload.length,
+    toReceiveCount: toDownload.length,
+    inSync: isInSync
+  });
+
+  if (isInSync) {
     syncOverallStateBadge.textContent = 'In Sync';
     syncOverallStateBadge.className = 'text-xs font-semibold text-emerald-400';
     appendSyncLog('Folders are already identical and 100% in sync!', 'success');
@@ -2210,6 +2544,7 @@ async function handleSyncManifestReceived(data) {
 
   appendSyncLog(`Diff computed: ${toUpload.length} to upload, ${toDownload.length} to download`, 'info');
   syncOverallStateBadge.textContent = 'Syncing Delta...';
+  syncOverallStateBadge.className = 'text-xs font-semibold text-blue-400';
 
   // Request needed files from remote
   if (toDownload.length > 0 && data.direction !== 'push') {
@@ -2235,6 +2570,85 @@ async function handleSyncManifestReceived(data) {
   }
 }
 
+// Present diff result on the Comparison Modal
+function applyDiffResultToModal(diff) {
+  if (diff.inSync) {
+    syncOverallStateBadge.textContent = 'In Sync';
+    syncOverallStateBadge.className = 'text-xs font-semibold text-emerald-400';
+    updateSyncProgressModal({
+      title: 'Folders Are In Sync! ✨',
+      subtitle: 'All files are identical across both devices. No transfers needed.',
+      phase: '100% In Sync',
+      phaseClass: 'text-[10px] font-semibold bg-emerald-500/25 text-emerald-300 border border-emerald-400/30 px-2 py-0.5 rounded-full shrink-0',
+      currentOp: 'Folders matched perfectly',
+      fileCount: `${diff.identicalCount} / ${diff.totalAnalyzed}`,
+      percent: 100,
+      statusDetail: `Analyzed ${diff.totalAnalyzed} files. 0 differences found.`,
+      total: diff.totalAnalyzed,
+      identical: diff.identicalCount,
+      toSend: 0,
+      toReceive: 0,
+      icon: 'check-circle-2',
+      iconSpin: false,
+      iconContainerClass: 'w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-400/30 shadow-lg shadow-emerald-500/25 shrink-0',
+      cancelBtnText: 'Close Window',
+      hideActionBtn: true
+    });
+  } else {
+    updateSyncProgressModal({
+      title: 'Comparison Complete',
+      subtitle: `${diff.toSendCount} to send • ${diff.toReceiveCount} to receive`,
+      phase: 'Delta Identified',
+      phaseClass: 'text-[10px] font-semibold bg-blue-500/25 text-blue-300 border border-blue-400/30 px-2 py-0.5 rounded-full shrink-0',
+      currentOp: 'Ready to sync differences',
+      fileCount: `${diff.identicalCount} / ${diff.totalAnalyzed} identical`,
+      percent: 100,
+      statusDetail: `Found ${diff.toSendCount + diff.toReceiveCount} differences out of ${diff.totalAnalyzed} files`,
+      total: diff.totalAnalyzed,
+      identical: diff.identicalCount,
+      toSend: diff.toSendCount,
+      toReceive: diff.toReceiveCount,
+      icon: 'arrow-left-right',
+      iconSpin: false,
+      iconContainerClass: 'w-12 h-12 rounded-2xl bg-blue-500/20 text-blue-400 flex items-center justify-center border border-blue-400/30 shadow-lg shadow-blue-500/25 shrink-0',
+      cancelBtnText: 'Dismiss',
+      actionBtnText: 'Syncing Differences...'
+    });
+  }
+}
+
+// Handler for peer status updates
+function handleSyncStatusReceived(data) {
+  updateSyncProgressModal({
+    phase: data.phase,
+    subtitle: data.subtitle,
+    currentOp: data.currentOp,
+    statusDetail: data.statusDetail,
+    percent: data.percent,
+    total: data.total
+  });
+}
+
+// Handler for diff result from remote peer
+function handleSyncDiffResultReceived(data) {
+  applyDiffResultToModal({
+    totalAnalyzed: data.totalAnalyzed,
+    identicalCount: data.identicalCount,
+    toSendCount: data.toSendCount,
+    toReceiveCount: data.toReceiveCount,
+    inSync: data.inSync
+  });
+}
+
+// Handler for sync cancellation
+function handleSyncCancelReceived(data) {
+  appendSyncLog(`Sync cancelled by ${data.senderName || 'peer'}`, 'warn');
+  closeSyncProgressModal();
+  syncOverallStateBadge.textContent = 'Idle';
+  syncOverallStateBadge.className = 'text-xs font-semibold text-white/50';
+  showToast(`Sync cancelled by ${data.senderName || 'peer'}`, 'info');
+}
+
 // Remote requested specific files from this PC
 async function handleSyncRequestReceived(data) {
   if (!localSyncDirHandle && localFilesFallbackMap.size === 0) return;
@@ -2253,10 +2667,18 @@ async function handleSyncRequestReceived(data) {
   }
 }
 
+// Fast O(1) file handle resolver with directory fallback
 async function getFileFromLocalHandle(rootDirHandle, path) {
-  // Check memory fallback first (Brave / universal mode)
   if (localFilesFallbackMap.has(path)) {
     return localFilesFallbackMap.get(path);
+  }
+
+  // Fast O(1) cache lookup
+  if (localFileHandlesMap.has(path)) {
+    try {
+      const handle = localFileHandlesMap.get(path);
+      return await handle.getFile();
+    } catch (_) {}
   }
 
   if (!rootDirHandle) return null;

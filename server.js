@@ -205,13 +205,11 @@ app.get('/api/transfer/download/:fileId', (req, res) => {
     return res.status(404).send('Transfer session expired or not found.');
   }
 
-  const safeName = transfer.isFolder
-    ? `${(transfer.name || 'folder').replace(/[\\/:*?"<>|]/g, '_')}.zip`
-    : (transfer.name || 'file.bin').replace(/[\\/:*?"<>|]/g, '_');
+  const safeName = (transfer.name || 'file.bin').replace(/[\\/:*?"<>|]/g, '_');
 
-  res.setHeader('Content-Type', transfer.isFolder ? 'application/zip' : 'application/octet-stream');
+  res.setHeader('Content-Type', 'application/octet-stream');
   res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeName)}"`);
-  if (!transfer.isFolder && transfer.size > 0) {
+  if (transfer.size > 0) {
     res.setHeader('Content-Length', transfer.size);
   }
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -220,16 +218,6 @@ app.get('/api/transfer/download/:fileId', (req, res) => {
   transfer.receiverRes = res;
   transfer.status = 'streaming';
   transfer.startTime = Date.now();
-
-  if (transfer.isFolder) {
-    const archive = archiver('zip', {
-      store: true,
-      forceZip64: true,
-      zlib: { level: 0 }
-    });
-    archive.pipe(res);
-    transfer.archive = archive;
-  }
 
   // Notify sender that receiver is connected and ready to receive stream
   const senderPeer = peers.get(transfer.senderPeerId);
@@ -266,14 +254,9 @@ app.post('/api/transfer/chunk/:fileId', express.raw({ type: '*/*', limit: '100mb
       await new Promise(r => setTimeout(r, waitMs));
     }
 
-    if (transfer.isFolder && transfer.archive) {
-      const relPath = req.query.path || 'file.bin';
-      transfer.archive.append(chunk, { name: relPath });
-    } else {
-      const ok = transfer.receiverRes.write(chunk);
-      if (!ok) {
-        await new Promise(resolve => transfer.receiverRes.once('drain', resolve));
-      }
+    const ok = transfer.receiverRes.write(chunk);
+    if (!ok) {
+      await new Promise(resolve => transfer.receiverRes.once('drain', resolve));
     }
     transfer.transferredBytes += chunk.length;
   }
@@ -296,9 +279,7 @@ app.post('/api/transfer/finish/:fileId', async (req, res) => {
   const transfer = activeStreamTransfers.get(req.params.fileId);
   if (!transfer) return res.status(404).json({ error: 'Transfer not found' });
 
-  if (transfer.isFolder && transfer.archive) {
-    await transfer.archive.finalize();
-  } else if (transfer.receiverRes) {
+  if (transfer.receiverRes) {
     transfer.receiverRes.end();
   }
 
@@ -405,6 +386,9 @@ function handleWebSocketConnection(ws, req) {
         case 'file-response':
         case 'cancel-transfer':
         case 'sync-manifest':
+        case 'sync-status':
+        case 'sync-diff-result':
+        case 'sync-cancel':
         case 'sync-request':
         case 'sync-response':
         case 'sync-complete':

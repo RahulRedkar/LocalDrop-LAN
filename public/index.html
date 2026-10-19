@@ -574,6 +574,78 @@
     </div>
   </div>
 
+  <!-- Folder Sync Progress & Comparison Modal -->
+  <div id="syncProgressModal" class="fixed inset-0 bg-black/75 backdrop-blur-2xl z-[105] flex items-center justify-center p-4 hidden">
+    <div class="apple-glass-modal p-6 max-w-lg w-full space-y-5 animate-in fade-in zoom-in-95 relative">
+      <button id="closeSyncProgressModalBtn" class="absolute top-4 right-4 text-white/50 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition" title="Dismiss">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+
+      <!-- Header -->
+      <div class="flex items-center space-x-3.5">
+        <div id="syncModalIconContainer" class="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-400/30 shadow-lg shadow-indigo-500/25 shrink-0">
+          <i id="syncModalIcon" data-lucide="refresh-cw" class="w-6 h-6 animate-spin"></i>
+        </div>
+        <div class="overflow-hidden">
+          <div class="flex items-center space-x-2">
+            <h3 id="syncModalTitle" class="font-bold text-white text-base tracking-tight truncate">Folder Synchronization</h3>
+            <span id="syncModalPhaseBadge" class="text-[10px] font-semibold bg-indigo-500/25 text-indigo-300 border border-indigo-400/30 px-2 py-0.5 rounded-full shrink-0">Analyzing</span>
+          </div>
+          <p id="syncModalSubtitle" class="text-xs text-white/60 mt-0.5 truncate">Comparing folders across devices...</p>
+        </div>
+      </div>
+
+      <!-- Current Operation & Counter -->
+      <div class="apple-glass-well p-4 space-y-3">
+        <div class="flex items-center justify-between text-xs">
+          <span id="syncModalCurrentOp" class="text-white/90 font-medium truncate max-w-[280px]">Indexing files...</span>
+          <span id="syncModalFileCount" class="font-mono text-indigo-300 font-semibold shrink-0">0 / 0</span>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="w-full h-2.5 bg-black/40 rounded-full overflow-hidden border border-white/10 relative">
+          <div id="syncModalProgressBar" class="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 rounded-full transition-all duration-150" style="width: 0%"></div>
+        </div>
+
+        <div class="flex items-center justify-between text-[11px] text-white/50">
+          <span id="syncModalStatusDetail" class="truncate max-w-[300px]">Preparing analysis...</span>
+          <span id="syncModalPercent" class="font-mono font-medium text-white/70">0%</span>
+        </div>
+      </div>
+
+      <!-- Comparison Breakdown Cards -->
+      <div class="grid grid-cols-4 gap-2 text-center">
+        <div class="apple-glass-well p-2.5 rounded-xl">
+          <p class="text-[10px] text-white/50 font-medium uppercase tracking-wider">Total</p>
+          <p id="syncModalTotalFiles" class="text-sm font-bold text-white mt-0.5 font-mono">0</p>
+        </div>
+        <div class="apple-glass-well p-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+          <p class="text-[10px] text-emerald-400/80 font-medium uppercase tracking-wider">Identical</p>
+          <p id="syncModalIdenticalFiles" class="text-sm font-bold text-emerald-400 mt-0.5 font-mono">0</p>
+        </div>
+        <div class="apple-glass-well p-2.5 rounded-xl border border-blue-500/20 bg-blue-500/5">
+          <p class="text-[10px] text-blue-400/80 font-medium uppercase tracking-wider">To Send</p>
+          <p id="syncModalToSendFiles" class="text-sm font-bold text-blue-400 mt-0.5 font-mono">0</p>
+        </div>
+        <div class="apple-glass-well p-2.5 rounded-xl border border-purple-500/20 bg-purple-500/5">
+          <p class="text-[10px] text-purple-400/80 font-medium uppercase tracking-wider">To Receive</p>
+          <p id="syncModalToReceiveFiles" class="text-sm font-bold text-purple-400 mt-0.5 font-mono">0</p>
+        </div>
+      </div>
+
+      <!-- Action Footer -->
+      <div class="flex space-x-3 pt-1">
+        <button id="cancelSyncModalBtn" class="flex-1 py-2.5 px-4 rounded-xl border border-white/15 bg-white/10 hover:bg-white/15 text-white text-xs font-medium transition hover:scale-[1.01]">
+          Cancel Sync
+        </button>
+        <button id="actionSyncModalBtn" class="flex-1 py-2.5 px-4 rounded-xl apple-btn-primary text-xs font-semibold transition flex items-center justify-center space-x-1.5 hidden">
+          <i data-lucide="check" class="w-3.5 h-3.5"></i>
+          <span id="actionSyncModalBtnText">Sync Delta Files</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Incoming Transfer Modal (Enhanced for Files and Folders) -->
   <div id="incomingModal" class="fixed inset-0 bg-black/60 backdrop-blur-2xl z-[100] flex items-center justify-center p-4 hidden">
     <div class="apple-glass-modal p-6 max-w-md w-full space-y-5 animate-in fade-in zoom-in-95">
@@ -612,6 +684,6 @@
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2.5 pointer-events-none"></div>
 
-  <script src="/app.js?v=4.1"></script>
+  <script src="/app.js?v=4.3"></script>
 </body>
 </html>
