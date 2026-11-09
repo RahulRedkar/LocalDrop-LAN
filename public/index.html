@@ -61,6 +61,8 @@
       --apple-font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       --apple-blue: #007AFF;
       --apple-blue-gradient: linear-gradient(180deg, #1A8CFF 0%, #007AFF 100%);
+      --apple-ease: cubic-bezier(0.16, 1, 0.3, 1);
+      --apple-spring: cubic-bezier(0.25, 1, 0.5, 1);
     }
 
     * {
@@ -72,29 +74,32 @@
       font-family: var(--apple-font);
       background-color: #07090e;
       background-image: 
-        radial-gradient(at 10% 12%, rgba(0, 122, 255, 0.18) 0px, transparent 40%),
-        radial-gradient(at 88% 10%, rgba(147, 51, 234, 0.16) 0px, transparent 40%),
-        radial-gradient(at 50% 50%, rgba(0, 198, 255, 0.08) 0px, transparent 45%),
-        radial-gradient(at 90% 88%, rgba(0, 122, 255, 0.12) 0px, transparent 40%),
-        radial-gradient(at 12% 88%, rgba(99, 102, 241, 0.14) 0px, transparent 40%);
+        radial-gradient(at 10% 12%, rgba(0, 122, 255, 0.22) 0px, transparent 45%),
+        radial-gradient(at 88% 10%, rgba(147, 51, 234, 0.18) 0px, transparent 45%),
+        radial-gradient(at 50% 50%, rgba(0, 198, 255, 0.10) 0px, transparent 50%),
+        radial-gradient(at 90% 88%, rgba(0, 122, 255, 0.15) 0px, transparent 45%),
+        radial-gradient(at 12% 88%, rgba(99, 102, 241, 0.16) 0px, transparent 45%);
       background-attachment: fixed;
       background-size: cover;
       color: #FFFFFF;
+      overflow-x: hidden;
     }
 
     /* Primary Liquid Glass Container */
     .apple-glass {
       background: rgba(255, 255, 255, 0.06);
-      backdrop-filter: blur(24px) saturate(150%);
-      -webkit-backdrop-filter: blur(24px) saturate(150%);
-      border-top: 1px solid rgba(255, 255, 255, 0.18);
-      border-left: 1px solid rgba(255, 255, 255, 0.18);
-      border-right: 1px solid rgba(255, 255, 255, 0.09);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+      backdrop-filter: blur(28px) saturate(160%);
+      -webkit-backdrop-filter: blur(28px) saturate(160%);
+      border-top: 1px solid rgba(255, 255, 255, 0.22);
+      border-left: 1px solid rgba(255, 255, 255, 0.22);
+      border-right: 1px solid rgba(255, 255, 255, 0.10);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.10);
       box-shadow: 
-        0 12px 36px 0 rgba(0, 0, 0, 0.35),
-        inset 0 1px 1px 0 rgba(255, 255, 255, 0.22);
+        0 14px 40px 0 rgba(0, 0, 0, 0.38),
+        inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.25);
       border-radius: 24px;
+      transition: transform 0.3s var(--apple-ease), box-shadow 0.3s var(--apple-ease);
+      will-change: transform, box-shadow;
     }
 
     /* Interactive Liquid Glass Card (Peers, Panels) */
@@ -102,36 +107,47 @@
       background: rgba(255, 255, 255, 0.05);
       backdrop-filter: blur(24px) saturate(150%);
       -webkit-backdrop-filter: blur(24px) saturate(150%);
-      border-top: 1px solid rgba(255, 255, 255, 0.18);
-      border-left: 1px solid rgba(255, 255, 255, 0.18);
+      border-top: 1px solid rgba(255, 255, 255, 0.20);
+      border-left: 1px solid rgba(255, 255, 255, 0.20);
       border-right: 1px solid rgba(255, 255, 255, 0.08);
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       box-shadow: 
         0 10px 30px 0 rgba(0, 0, 0, 0.3),
         inset 0 1px 1px 0 rgba(255, 255, 255, 0.2);
-      border-radius: 20px;
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      border-radius: 22px;
+      transition: 
+        transform 0.28s var(--apple-ease),
+        box-shadow 0.28s var(--apple-ease),
+        background-color 0.28s ease,
+        border-color 0.28s ease;
+      will-change: transform, box-shadow;
     }
 
     .apple-glass-card:hover {
-      background: rgba(255, 255, 255, 0.09);
-      border-top-color: rgba(255, 255, 255, 0.32);
-      border-left-color: rgba(255, 255, 255, 0.32);
-      border-right-color: rgba(255, 255, 255, 0.18);
-      border-bottom-color: rgba(255, 255, 255, 0.18);
-      transform: scale(1.01);
+      background: rgba(255, 255, 255, 0.10);
+      border-top-color: rgba(255, 255, 255, 0.38);
+      border-left-color: rgba(255, 255, 255, 0.38);
+      border-right-color: rgba(255, 255, 255, 0.20);
+      border-bottom-color: rgba(255, 255, 255, 0.20);
+      transform: translateY(-3px) scale(1.015);
       box-shadow: 
-        0 18px 44px 0 rgba(0, 0, 0, 0.45),
-        inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.32);
+        0 20px 48px 0 rgba(0, 0, 0, 0.5),
+        0 0 25px rgba(0, 122, 255, 0.25),
+        inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.35);
+    }
+
+    .apple-glass-card:active {
+      transform: translateY(0px) scale(0.98);
+      transition-duration: 0.12s;
     }
 
     .apple-glass-card.is-selected {
       border: 2px solid #007AFF !important;
-      background: rgba(0, 122, 255, 0.16) !important;
+      background: rgba(0, 122, 255, 0.18) !important;
       box-shadow: 
-        0 0 25px rgba(0, 122, 255, 0.45),
-        inset 0 1px 1px 0 rgba(255, 255, 255, 0.35) !important;
-      transform: scale(1.01);
+        0 0 30px rgba(0, 122, 255, 0.5),
+        inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.4) !important;
+      transform: translateY(-2px) scale(1.015);
     }
 
     /* Inner Glass Wells (Inputs, status boxes, inner cards) */
@@ -139,9 +155,10 @@
       background: rgba(0, 0, 0, 0.32);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.10);
       box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.38);
       border-radius: 16px;
+      transition: border-color 0.25s var(--apple-ease), box-shadow 0.25s var(--apple-ease);
     }
 
     /* Primary iOS Blue Action Button */
@@ -149,25 +166,27 @@
       background: linear-gradient(180deg, #1A8CFF 0%, #007AFF 100%);
       color: #FFFFFF;
       font-weight: 600;
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.35);
       box-shadow: 
         0 4px 18px rgba(0, 122, 255, 0.45),
-        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+        inset 0 1px 0 rgba(255, 255, 255, 0.45);
       border-radius: 12px;
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: transform 0.22s var(--apple-ease), box-shadow 0.22s var(--apple-ease), filter 0.22s ease;
+      will-change: transform, box-shadow;
     }
 
     .apple-btn-primary:hover {
-      transform: scale(1.01);
+      transform: translateY(-1px) scale(1.02);
       filter: brightness(1.08);
       box-shadow: 
-        0 6px 22px rgba(0, 122, 255, 0.6),
-        inset 0 1px 0 rgba(255, 255, 255, 0.5);
+        0 8px 26px rgba(0, 122, 255, 0.65),
+        inset 0 1px 0 rgba(255, 255, 255, 0.55);
     }
 
     .apple-btn-primary:active {
-      transform: scale(0.99);
+      transform: translateY(0px) scale(0.97);
       filter: brightness(0.95);
+      transition-duration: 0.1s;
     }
 
     /* Secondary Liquid Glass Button */
@@ -175,48 +194,63 @@
       background: rgba(255, 255, 255, 0.08);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
-      border-top: 1px solid rgba(255, 255, 255, 0.18);
-      border-left: 1px solid rgba(255, 255, 255, 0.18);
-      border-right: 1px solid rgba(255, 255, 255, 0.1);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      border-top: 1px solid rgba(255, 255, 255, 0.20);
+      border-left: 1px solid rgba(255, 255, 255, 0.20);
+      border-right: 1px solid rgba(255, 255, 255, 0.10);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.10);
       box-shadow: 
-        0 4px 14px rgba(0, 0, 0, 0.2),
-        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        0 4px 14px rgba(0, 0, 0, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.22);
       color: #FFFFFF;
       border-radius: 12px;
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: transform 0.22s var(--apple-ease), background-color 0.22s ease, border-color 0.22s ease, box-shadow 0.22s var(--apple-ease);
+      will-change: transform;
     }
 
     .apple-btn-glass:hover {
-      background: rgba(255, 255, 255, 0.14);
-      border-top-color: rgba(255, 255, 255, 0.3);
-      border-left-color: rgba(255, 255, 255, 0.3);
-      transform: scale(1.01);
+      background: rgba(255, 255, 255, 0.15);
+      border-top-color: rgba(255, 255, 255, 0.35);
+      border-left-color: rgba(255, 255, 255, 0.35);
+      transform: translateY(-1px) scale(1.015);
       box-shadow: 
-        0 6px 18px rgba(0, 0, 0, 0.28),
-        inset 0 1px 0 rgba(255, 255, 255, 0.28);
+        0 8px 22px rgba(0, 0, 0, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.3);
     }
 
     .apple-btn-glass:active {
-      transform: scale(0.99);
+      transform: translateY(0px) scale(0.97);
+      transition-duration: 0.1s;
     }
 
     /* Modals with Heavy Liquid Frosted Glass */
     .apple-glass-modal {
-      background: rgba(20, 23, 33, 0.82);
-      backdrop-filter: blur(40px) saturate(180%);
-      -webkit-backdrop-filter: blur(40px) saturate(180%);
-      border-top: 1px solid rgba(255, 255, 255, 0.24);
-      border-left: 1px solid rgba(255, 255, 255, 0.24);
-      border-right: 1px solid rgba(255, 255, 255, 0.12);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(18, 22, 33, 0.85);
+      backdrop-filter: blur(48px) saturate(190%);
+      -webkit-backdrop-filter: blur(48px) saturate(190%);
+      border-top: 1px solid rgba(255, 255, 255, 0.28);
+      border-left: 1px solid rgba(255, 255, 255, 0.28);
+      border-right: 1px solid rgba(255, 255, 255, 0.14);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.14);
       box-shadow: 
-        0 32px 80px rgba(0, 0, 0, 0.7),
-        inset 0 1px 1.5px rgba(255, 255, 255, 0.35);
-      border-radius: 24px;
+        0 36px 90px rgba(0, 0, 0, 0.75),
+        inset 0 1px 1.5px rgba(255, 255, 255, 0.4);
+      border-radius: 26px;
+      animation: modalSpringIn 0.32s var(--apple-ease) forwards;
+      will-change: transform, opacity;
     }
 
-    /* Radar Liquid Glass Rings */
+    @keyframes modalSpringIn {
+      0% {
+        opacity: 0;
+        transform: scale(0.93) translateY(8px);
+      }
+      100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    /* Radar Liquid Glass & Dynamic Wave Beam */
     .radar-circle {
       border: 1px solid rgba(0, 122, 255, 0.22);
       border-radius: 9999px;
@@ -226,8 +260,171 @@
       transform: translate(-50%, -50%);
       pointer-events: none;
       box-shadow: 
-        0 0 28px rgba(0, 122, 255, 0.05),
-        inset 0 0 28px rgba(0, 122, 255, 0.04);
+        0 0 28px rgba(0, 122, 255, 0.06),
+        inset 0 0 28px rgba(0, 122, 255, 0.05);
+      will-change: transform, opacity;
+    }
+
+    .radar-wave {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      border-radius: 9999px;
+      pointer-events: none;
+      border: 1.5px solid rgba(0, 122, 255, 0.35);
+      animation: radarWave 4.5s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
+      will-change: transform, opacity;
+    }
+
+    @keyframes radarWave {
+      0% {
+        width: 80px;
+        height: 80px;
+        opacity: 0.9;
+        transform: translate(-50%, -50%) scale(1);
+      }
+      50% {
+        opacity: 0.4;
+      }
+      100% {
+        width: 620px;
+        height: 620px;
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1);
+      }
+    }
+
+    /* Gentle Rotating Radar Sweep Beam */
+    .radar-sweep {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 520px;
+      height: 520px;
+      transform: translate(-50%, -50%);
+      border-radius: 9999px;
+      pointer-events: none;
+      background: conic-gradient(
+        from 0deg,
+        rgba(0, 122, 255, 0) 0deg,
+        rgba(0, 122, 255, 0.03) 240deg,
+        rgba(0, 122, 255, 0.12) 340deg,
+        rgba(0, 122, 255, 0.28) 360deg
+      );
+      animation: radarSpin 9s linear infinite;
+      mask-image: radial-gradient(circle at center, black 0%, black 70%, transparent 100%);
+      -webkit-mask-image: radial-gradient(circle at center, black 0%, black 70%, transparent 100%);
+      will-change: transform;
+    }
+
+    @keyframes radarSpin {
+      from { transform: translate(-50%, -50%) rotate(0deg); }
+      to { transform: translate(-50%, -50%) rotate(360deg); }
+    }
+
+    /* Self Device Breathing Glow */
+    #selfRadarBadge {
+      animation: selfBreathing 3.5s ease-in-out infinite;
+      will-change: transform, box-shadow;
+    }
+
+    @keyframes selfBreathing {
+      0%, 100% {
+        box-shadow: 0 0 35px rgba(0, 122, 255, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+        transform: scale(1);
+      }
+      50% {
+        box-shadow: 0 0 50px rgba(0, 122, 255, 0.65), inset 0 1px 2px rgba(255, 255, 255, 0.7);
+        transform: scale(1.04);
+      }
+    }
+
+    /* Peer Card Entrance Animation */
+    .peer-card-enter {
+      animation: peerCardIn 0.35s var(--apple-ease) forwards;
+      will-change: transform, opacity;
+    }
+
+    @keyframes peerCardIn {
+      0% {
+        opacity: 0;
+        transform: translateY(14px) scale(0.94);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    /* Liquid Progress Bar Shimmer */
+    .progress-shimmer {
+      background-size: 200% 100%;
+      background-image: linear-gradient(
+        90deg,
+        #007AFF 0%,
+        #38bdf8 30%,
+        #ffffff 50%,
+        #38bdf8 70%,
+        #007AFF 100%
+      );
+      animation: progressShimmer 2.4s linear infinite;
+      will-change: background-position;
+    }
+
+    @keyframes progressShimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* Stage Transition */
+    .stage-view {
+      transition: opacity 0.28s var(--apple-ease), transform 0.28s var(--apple-ease);
+      will-change: opacity, transform;
+    }
+    .stage-hidden {
+      display: none !important;
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    .stage-entering {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    .stage-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Toast Animations */
+    .toast-capsule {
+      animation: toastIn 0.32s var(--apple-ease) forwards;
+      will-change: transform, opacity;
+    }
+    .toast-capsule-exit {
+      animation: toastOut 0.25s var(--apple-ease) forwards;
+      will-change: transform, opacity;
+    }
+
+    @keyframes toastIn {
+      0% {
+        opacity: 0;
+        transform: translateY(18px) scale(0.94);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes toastOut {
+      0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+      100% {
+        opacity: 0;
+        transform: translateY(14px) scale(0.92);
+      }
     }
 
     /* Refined Liquid Glass Scrollbars */
@@ -263,6 +460,12 @@
           <div class="flex items-center space-x-2">
             <h1 class="text-lg font-bold tracking-tight text-white">LocalDrop LAN</h1>
             <span class="text-[10px] font-semibold uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-400/30 px-2 py-0.5 rounded-full shadow-sm">Pro</span>
+            <span class="text-[10px] font-mono text-white/40 tracking-wider">v1.0.1</span>
+            <!-- Glowing update available badge -->
+            <button id="updateAvailableBadge" class="hidden items-center space-x-1.5 bg-gradient-to-r from-blue-500/25 via-indigo-500/25 to-purple-500/25 hover:from-blue-500/40 hover:to-purple-500/40 text-blue-300 border border-blue-400/40 px-2.5 py-0.5 rounded-full text-[10px] font-semibold shadow-[0_0_15px_rgba(0,122,255,0.4)] transition-all hover:scale-105 cursor-pointer animate-pulse" title="Click to view and install update">
+              <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping"></span>
+              <span id="updateBadgeText">Update Available</span>
+            </button>
           </div>
           <div class="flex items-center space-x-2 text-xs text-white/60 mt-0.5 font-normal">
             <span class="inline-block w-2 h-2 rounded-full bg-[#34C759] shadow-[0_0_8px_#34C759] animate-pulse shrink-0"></span>
@@ -285,6 +488,18 @@
 
       <!-- Action Buttons & Identity -->
       <div class="flex items-center space-x-2.5">
+        <!-- Check for Updates Button -->
+        <button id="checkUpdateBtn" class="flex items-center space-x-1.5 apple-btn-glass px-3 py-1.5 rounded-full text-xs font-medium transition" title="Check for software updates">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5 text-blue-400"></i>
+          <span class="hidden md:inline">Update</span>
+        </button>
+
+        <!-- How to Use Guide Button -->
+        <button id="howToUseBtn" class="flex items-center space-x-1.5 apple-btn-glass px-3 py-1.5 rounded-full text-xs font-medium transition" title="How to use LocalDrop LAN">
+          <i data-lucide="help-circle" class="w-3.5 h-3.5 text-indigo-400"></i>
+          <span class="hidden sm:inline">How to Use</span>
+        </button>
+
         <!-- QR Code Button -->
         <button id="qrBtn" class="flex items-center space-x-1.5 apple-btn-glass px-3.5 py-1.5 rounded-full text-xs font-medium transition" title="Scan QR Code to open on mobile">
           <i data-lucide="qr-code" class="w-3.5 h-3.5 text-blue-400"></i>
@@ -316,7 +531,7 @@
   </header>
 
   <!-- TAB 1: RADAR & TRANSFER STAGE -->
-  <main id="radarStage" class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 flex flex-col items-center justify-between relative overflow-hidden">
+  <main id="radarStage" class="stage-view stage-visible flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 flex flex-col items-center justify-between relative overflow-hidden">
     
     <!-- Top Action Toolbar for Quick Sending -->
     <div class="w-full flex items-center justify-between flex-wrap gap-2.5 mb-3 z-20">
@@ -349,6 +564,13 @@
 
     <!-- Radar Canvas Area -->
     <div id="dropZoneGlobal" class="w-full relative py-8 flex-1 flex flex-col items-center justify-center min-h-[380px]">
+      <!-- Dynamic Rotating Radar Sweep Beam -->
+      <div class="radar-sweep"></div>
+      <!-- Continuous Harmonic Pulse Waves -->
+      <div class="radar-wave" style="animation-delay: 0s;"></div>
+      <div class="radar-wave" style="animation-delay: 1.5s;"></div>
+      <div class="radar-wave" style="animation-delay: 3s;"></div>
+
       <!-- Radar frosted ripple lines -->
       <div class="radar-circle w-64 h-64"></div>
       <div class="radar-circle w-96 h-96"></div>
@@ -396,7 +618,7 @@
   </main>
 
   <!-- TAB 2: FOLDER SYNC PANEL -->
-  <main id="syncStage" class="flex-1 max-w-5xl w-full mx-auto p-4 md:p-6 hidden flex flex-col space-y-6">
+  <main id="syncStage" class="stage-view stage-hidden flex-1 max-w-5xl w-full mx-auto p-4 md:p-6 flex flex-col space-y-6">
     <!-- Sync Header & Guidance -->
     <div class="apple-glass p-6 flex items-start justify-between flex-wrap gap-4">
       <div>
@@ -681,9 +903,169 @@
     </div>
   </div>
 
+  <!-- Software Update Modal (visionOS Liquid Glass) -->
+  <div id="updateModal" class="fixed inset-0 bg-black/60 backdrop-blur-2xl z-[110] flex items-center justify-center p-4 hidden">
+    <div class="apple-glass-modal p-6 max-w-md w-full space-y-5 animate-in fade-in zoom-in-95 relative text-left">
+      <button id="closeUpdateModalBtn" class="absolute top-4 right-4 text-white/50 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition" title="Close">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+
+      <!-- Modal Header -->
+      <div class="flex items-center space-x-3.5">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/30 border border-white/25 shrink-0">
+          <i data-lucide="sparkles" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h3 class="font-bold text-white text-base tracking-tight">Software Update</h3>
+            <span id="updateModalTagBadge" class="text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2 py-0.5 rounded-full">New</span>
+          </div>
+          <p id="updateModalSubtitle" class="text-xs text-white/60 mt-0.5">A new version of LocalDrop LAN is ready.</p>
+        </div>
+      </div>
+
+      <!-- Version Comparison Info Box -->
+      <div class="apple-glass-well p-4 space-y-3">
+        <div class="flex items-center justify-between text-xs">
+          <div class="space-y-0.5">
+            <p class="text-[10px] text-white/50 uppercase tracking-wider font-semibold">Current Version</p>
+            <p id="updateModalCurrentVersion" class="text-sm font-bold text-white font-mono">v1.0.1</p>
+          </div>
+          <i data-lucide="arrow-right" class="w-4 h-4 text-blue-400"></i>
+          <div class="space-y-0.5 text-right">
+            <p class="text-[10px] text-emerald-400/80 uppercase tracking-wider font-semibold">Latest Version</p>
+            <p id="updateModalLatestVersion" class="text-sm font-bold text-emerald-300 font-mono">v1.0.1</p>
+          </div>
+        </div>
+
+        <!-- Release Notes Area -->
+        <div class="pt-2 border-t border-white/10">
+          <p class="text-[11px] font-semibold text-white/80 mb-1">What's New:</p>
+          <div id="updateModalNotes" class="text-xs text-white/70 max-h-36 overflow-y-auto space-y-1.5 leading-relaxed pr-1 font-sans">
+            <p>• UI changes</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="space-y-2 pt-1">
+        <div class="grid grid-cols-2 gap-2">
+          <a id="updateDownloadZipBtn" href="https://github.com/RahulRedkar/LocalDrop-LAN/releases/latest" target="_blank" rel="noopener noreferrer" class="py-2.5 px-3 rounded-xl apple-btn-primary text-xs font-semibold flex items-center justify-center space-x-1.5 text-white no-underline shadow-lg" title="Recommended: Clean ZIP bundle without browser warnings">
+            <i data-lucide="archive" class="w-4 h-4"></i>
+            <span>Download ZIP</span>
+          </a>
+          <a id="updateDownloadInstallerBtn" href="https://github.com/RahulRedkar/LocalDrop-LAN/releases/latest" target="_blank" rel="noopener noreferrer" class="py-2.5 px-3 rounded-xl apple-btn-glass text-xs font-semibold flex items-center justify-center space-x-1.5 text-white no-underline hover:text-white" title="Direct Windows Setup Installer">
+            <i data-lucide="download" class="w-4 h-4 text-blue-400"></i>
+            <span id="updateDownloadBtnText">Setup.exe</span>
+          </a>
+        </div>
+
+        <div class="flex space-x-2">
+          <button id="updateSyncWebBtn" class="flex-1 py-2 px-3 rounded-xl apple-btn-glass text-xs font-medium transition flex items-center justify-center space-x-1.5">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-blue-400"></i>
+            <span>Update Web UI</span>
+          </button>
+          <a id="updateViewGithubBtn" href="https://github.com/RahulRedkar/LocalDrop-LAN/releases" target="_blank" rel="noopener noreferrer" class="flex-1 py-2 px-3 rounded-xl apple-btn-glass text-xs font-medium transition flex items-center justify-center space-x-1.5 text-white/80 hover:text-white no-underline">
+            <i data-lucide="external-link" class="w-3.5 h-3.5 text-purple-400"></i>
+            <span>View Release</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- How to Use Guide Modal (visionOS Liquid Glass) -->
+  <div id="howToUseModal" class="fixed inset-0 bg-black/60 backdrop-blur-2xl z-[110] flex items-center justify-center p-4 hidden">
+    <div class="apple-glass-modal p-6 max-w-lg w-full space-y-5 animate-in fade-in zoom-in-95 relative text-left">
+      <button id="closeHowToUseModalBtn" class="absolute top-4 right-4 text-white/50 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition" title="Close">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+
+      <!-- Modal Header -->
+      <div class="flex items-center space-x-3.5">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 via-blue-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30 border border-white/25 shrink-0">
+          <i data-lucide="book-open" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h3 class="font-bold text-white text-base tracking-tight">How to Use LocalDrop LAN</h3>
+            <span class="text-[10px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-400/30 px-2 py-0.5 rounded-full">Guide</span>
+          </div>
+          <p class="text-xs text-white/60 mt-0.5">High-speed, zero-cloud file and folder transfer across your devices.</p>
+        </div>
+      </div>
+
+      <!-- Quick Steps -->
+      <div class="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
+        <!-- Step 1 -->
+        <div class="apple-glass-well p-3.5 flex items-start space-x-3">
+          <div class="w-7 h-7 rounded-xl bg-blue-500/20 text-blue-300 border border-blue-400/30 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+            1
+          </div>
+          <div class="space-y-0.5 text-xs">
+            <p class="font-semibold text-white">Connect to the Same Network</p>
+            <p class="text-white/60 leading-relaxed">Make sure both devices (PC, Mac, iPhone, Android) are connected to the same Wi-Fi router or local Ethernet switch.</p>
+          </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="apple-glass-well p-3.5 flex items-start space-x-3">
+          <div class="w-7 h-7 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-400/30 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+            2
+          </div>
+          <div class="space-y-0.5 text-xs">
+            <p class="font-semibold text-white">Open on Other Devices</p>
+            <p class="text-white/60 leading-relaxed">Click the <strong class="text-white">QR Code</strong> button in the header and scan it with your phone's camera, or visit <code class="text-blue-300 bg-black/30 px-1.5 py-0.5 rounded text-[11px]">http://filetrans.local:8080</code> on your browser.</p>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="apple-glass-well p-3.5 flex items-start space-x-3">
+          <div class="w-7 h-7 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+            3
+          </div>
+          <div class="space-y-0.5 text-xs">
+            <p class="font-semibold text-white">Select a Peer to Send</p>
+            <p class="text-white/60 leading-relaxed">Devices appear automatically on the radar. Click on any device to choose individual files, multiple files, or whole directories to send.</p>
+          </div>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="apple-glass-well p-3.5 flex items-start space-x-3">
+          <div class="w-7 h-7 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+            4
+          </div>
+          <div class="space-y-0.5 text-xs">
+            <p class="font-semibold text-white">Fast Direct Streaming</p>
+            <p class="text-white/60 leading-relaxed">The receiver confirms the prompt and the file streams at full hardware speed directly into their downloads. Zero cloud limits, 100% private.</p>
+          </div>
+        </div>
+
+        <!-- Extra Tips Well -->
+        <div class="p-3 rounded-xl bg-white/[0.04] border border-white/10 text-[11px] text-white/60 space-y-1">
+          <p class="text-white/80 font-semibold flex items-center space-x-1.5">
+            <i data-lucide="lightbulb" class="w-3.5 h-3.5 text-amber-400"></i>
+            <span>Pro Tips:</span>
+          </p>
+          <p>• <strong class="text-white">Folder Sync:</strong> Switch to the Folder Sync tab to send deep directory hierarchies directly without zip overhead.</p>
+          <p>• <strong class="text-white">Device Name:</strong> You can customize your device name right from the top right input.</p>
+          <p>• <strong class="text-white">Auto Updates:</strong> Keep your app updated anytime by clicking the "Update" button in the header.</p>
+        </div>
+      </div>
+
+      <!-- Close Button -->
+      <div class="pt-1">
+        <button id="gotItHowToUseBtn" class="w-full py-2.5 px-4 rounded-xl apple-btn-primary text-xs font-semibold flex items-center justify-center space-x-1.5 text-white">
+          <i data-lucide="check" class="w-4 h-4"></i>
+          <span>Got it!</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2.5 pointer-events-none"></div>
 
-  <script src="/app.js?v=4.3"></script>
+  <script src="/app.js?v=1.0.1"></script>
 </body>
 </html>

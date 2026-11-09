@@ -1,11 +1,12 @@
 {
   "name": "localdrop-lan",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Production-ready, self-hosted LAN File Sharing Web Application using WebRTC and WebSockets",
   "main": "server.js",
   "bin": "server.js",
   "scripts": {
     "start": "node server.js",
+    "test": "node test/app.test.js",
     "build:exe": "npx pkg . --targets node18-win-x64 --output LocalDrop-LAN.exe"
   },
   "pkg": {

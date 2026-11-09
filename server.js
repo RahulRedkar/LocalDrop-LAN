@@ -17,6 +17,8 @@ const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 8080;
 const HTTPS_PORT = process.env.HTTPS_PORT || 8443;
 const MDNS_HOST = 'filetrans.local';
+const APP_VERSION = '1.0.1';
+const GITHUB_REPO = 'RahulRedkar/LocalDrop-LAN';
 
 let httpsServer = null;
 let wssHttps = null;
@@ -77,15 +79,215 @@ function getLocalIPAddresses() {
   return addresses;
 }
 
-// REST API for network info
+// REST API for network info & version
 app.get('/api/info', (req, res) => {
   res.json({
+    version: APP_VERSION,
     hostname: os.hostname(),
     ips: getLocalIPAddresses(),
     port: PORT,
     httpsPort: HTTPS_PORT,
     mdnsHost: MDNS_HOST
   });
+});
+
+// Cache for GitHub update check (10 minutes)
+let updateCache = {
+  lastChecked: 0,
+  data: null
+};
+
+function compareSemver(v1, v2) {
+  const parse = v => (v || '').replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  const p1 = parse(v1);
+  const p2 = parse(v2);
+  for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+    const a = p1[i] || 0;
+    const b = p2[i] || 0;
+    if (a > b) return 1;
+    if (a < b) return -1;
+  }
+  return 0;
+}
+
+function checkRawPackageJson() {
+  return new Promise((resolve) => {
+    const options = {
+      hostname: 'raw.githubusercontent.com',
+      path: `/${GITHUB_REPO}/main/package.json`,
+      headers: { 'User-Agent': `LocalDrop-LAN/${APP_VERSION}` },
+      timeout: 5000
+    };
+
+    const req = https.get(options, (res) => {
+      let rawData = '';
+      res.on('data', chunk => { rawData += chunk; });
+      res.on('end', () => {
+        try {
+          if (res.statusCode === 200) {
+            const pkg = JSON.parse(rawData);
+            const latestVersion = (pkg.version || '').trim();
+            const updateAvailable = compareSemver(latestVersion, APP_VERSION) > 0;
+            const result = {
+              currentVersion: APP_VERSION,
+              latestVersion: latestVersion || APP_VERSION,
+              updateAvailable,
+              releaseName: `Version ${latestVersion}`,
+              releaseNotes: 'UI changes',
+              releaseUrl: `https://github.com/${GITHUB_REPO}/releases`,
+              installerUrl: `https://github.com/${GITHUB_REPO}/releases/latest/download/LocalDrop-LAN-Setup.exe`,
+              zipUrl: `https://github.com/${GITHUB_REPO}/releases/latest/download/LocalDrop-LAN-Setup.zip`,
+              publishedAt: new Date().toISOString()
+            };
+            updateCache = { lastChecked: Date.now(), data: result };
+            return resolve(result);
+          }
+        } catch (_) {}
+        resolve({
+          currentVersion: APP_VERSION,
+          latestVersion: APP_VERSION,
+          updateAvailable: false,
+          offline: true
+        });
+      });
+    });
+
+    req.on('error', () => {
+      resolve({
+        currentVersion: APP_VERSION,
+        latestVersion: APP_VERSION,
+        updateAvailable: false,
+        offline: true
+      });
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      resolve({
+        currentVersion: APP_VERSION,
+        latestVersion: APP_VERSION,
+        updateAvailable: false,
+        offline: true
+      });
+    });
+  });
+}
+
+async function fetchLatestGitHubVersion() {
+  const now = Date.now();
+  if (updateCache.data && now - updateCache.lastChecked < 10 * 60 * 1000) {
+    return updateCache.data;
+  }
+
+  return new Promise((resolve) => {
+    const options = {
+      hostname: 'api.github.com',
+      path: `/repos/${GITHUB_REPO}/releases/latest`,
+      headers: {
+        'User-Agent': `LocalDrop-LAN/${APP_VERSION}`,
+        'Accept': 'application/vnd.github.v3+json'
+      },
+      timeout: 5000
+    };
+
+    const req = https.get(options, (res) => {
+      let rawData = '';
+      res.on('data', chunk => { rawData += chunk; });
+      res.on('end', () => {
+        try {
+          if (res.statusCode === 200) {
+            const json = JSON.parse(rawData);
+            const tag = (json.tag_name || json.name || '').trim();
+            const latestVersion = tag.replace(/^v/, '');
+            const updateAvailable = compareSemver(latestVersion, APP_VERSION) > 0;
+
+            let installerUrl = `https://github.com/${GITHUB_REPO}/releases/latest/download/LocalDrop-LAN-Setup.exe`;
+            let zipUrl = `https://github.com/${GITHUB_REPO}/releases/latest/download/LocalDrop-LAN-Setup.zip`;
+            if (Array.isArray(json.assets)) {
+              const setupAsset = json.assets.find(a => a.name && a.name.endsWith('.exe'));
+              if (setupAsset && setupAsset.browser_download_url) {
+                installerUrl = setupAsset.browser_download_url;
+              }
+              const zipAsset = json.assets.find(a => a.name && a.name.endsWith('.zip'));
+              if (zipAsset && zipAsset.browser_download_url) {
+                zipUrl = zipAsset.browser_download_url;
+              }
+            }
+
+            const result = {
+              currentVersion: APP_VERSION,
+              latestVersion: latestVersion || APP_VERSION,
+              updateAvailable,
+              releaseName: json.name || tag,
+              releaseNotes: json.body || 'New features and improvements.',
+              releaseUrl: json.html_url || `https://github.com/${GITHUB_REPO}/releases`,
+              installerUrl,
+              zipUrl,
+              publishedAt: json.published_at || new Date().toISOString()
+            };
+            updateCache = { lastChecked: now, data: result };
+            return resolve(result);
+          }
+        } catch (_) {}
+
+        // Fallback to raw package.json check
+        checkRawPackageJson().then(resolve);
+      });
+    });
+
+    req.on('error', () => {
+      checkRawPackageJson().then(resolve);
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      checkRawPackageJson().then(resolve);
+    });
+  });
+}
+
+// REST API for checking updates
+app.get('/api/check-update', async (req, res) => {
+  try {
+    const updateInfo = await fetchLatestGitHubVersion();
+    res.json(updateInfo);
+  } catch (err) {
+    res.json({
+      currentVersion: APP_VERSION,
+      latestVersion: APP_VERSION,
+      updateAvailable: false,
+      error: err.message
+    });
+  }
+});
+
+// REST API for updating web assets in-place on disk
+app.post('/api/update/sync-web', async (req, res) => {
+  try {
+    if (!fs.existsSync(publicDir)) {
+      return res.status(400).json({ error: 'Public directory is not writable on disk' });
+    }
+
+    const downloadRaw = (fileName) => new Promise((resolve, reject) => {
+      const fileUrl = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/public/${fileName}`;
+      https.get(fileUrl, { headers: { 'User-Agent': `LocalDrop-LAN/${APP_VERSION}` }, timeout: 8000 }, (resp) => {
+        if (resp.statusCode !== 200) return reject(new Error(`HTTP ${resp.statusCode}`));
+        let content = '';
+        resp.on('data', chunk => { content += chunk; });
+        resp.on('end', () => resolve(content));
+      }).on('error', reject);
+    });
+
+    const [html, js] = await Promise.all([
+      downloadRaw('index.html'),
+      downloadRaw('app.js')
+    ]);
+
+    fs.writeFileSync(path.join(publicDir, 'index.html'), html, 'utf8');
+    fs.writeFileSync(path.join(publicDir, 'app.js'), js, 'utf8');
+
+    res.json({ success: true, message: 'Web UI updated to latest version successfully!' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to sync web assets: ' + err.message });
+  }
 });
 
 
@@ -198,6 +400,92 @@ app.post('/api/transfer/create', (req, res) => {
   res.json({ success: true, fileId });
 });
 
+// Safe MIME type dictionary to prevent browser "unsafe file" warnings
+const MIME_TYPES = {
+  // Images
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  ico: 'image/x-icon',
+  bmp: 'image/bmp',
+  tiff: 'image/tiff',
+  tif: 'image/tiff',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  avif: 'image/avif',
+  // Videos
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo',
+  mov: 'video/quicktime',
+  wmv: 'video/x-ms-wmv',
+  flv: 'video/x-flv',
+  m4v: 'video/x-m4v',
+  // Audio
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  m4a: 'audio/mp4',
+  flac: 'audio/flac',
+  aac: 'audio/aac',
+  opus: 'audio/opus',
+  // Documents
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  odt: 'application/vnd.oasis.opendocument.text',
+  ods: 'application/vnd.oasis.opendocument.spreadsheet',
+  txt: 'text/plain; charset=utf-8',
+  rtf: 'application/rtf',
+  csv: 'text/csv; charset=utf-8',
+  tsv: 'text/tab-separated-values; charset=utf-8',
+  md: 'text/markdown; charset=utf-8',
+  // Archives
+  zip: 'application/zip',
+  rar: 'application/vnd.rar',
+  '7z': 'application/x-7z-compressed',
+  tar: 'application/x-tar',
+  gz: 'application/gzip',
+  bz2: 'application/x-bzip2',
+  xz: 'application/x-xz',
+  dmg: 'application/x-apple-diskimage',
+  iso: 'application/x-iso9660-image',
+  // Code & Web
+  json: 'application/json',
+  xml: 'application/xml',
+  html: 'text/html; charset=utf-8',
+  htm: 'text/html; charset=utf-8',
+  css: 'text/css; charset=utf-8',
+  js: 'text/javascript; charset=utf-8',
+  mjs: 'text/javascript; charset=utf-8',
+  ts: 'text/typescript; charset=utf-8',
+  yaml: 'text/yaml; charset=utf-8',
+  yml: 'text/yaml; charset=utf-8',
+  sh: 'application/x-sh',
+  py: 'text/x-python; charset=utf-8',
+  sql: 'application/sql',
+  // Binaries
+  exe: 'application/vnd.microsoft.portable-executable',
+  msi: 'application/x-msi',
+  apk: 'application/vnd.android.package-archive',
+  deb: 'application/vnd.debian.binary-package',
+  rpm: 'application/x-rpm'
+};
+
+function getMimeType(filename) {
+  if (!filename) return 'application/octet-stream';
+  const ext = path.extname(filename).toLowerCase().replace(/^\./, '');
+  return MIME_TYPES[ext] || 'application/octet-stream';
+}
+
 // 2. Receiver initiates native browser download
 app.get('/api/transfer/download/:fileId', (req, res) => {
   const transfer = activeStreamTransfers.get(req.params.fileId);
@@ -206,14 +494,22 @@ app.get('/api/transfer/download/:fileId', (req, res) => {
   }
 
   const safeName = (transfer.name || 'file.bin').replace(/[\\/:*?"<>|]/g, '_');
+  const asciiFallback = safeName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
+  const utf8Filename = encodeURIComponent(safeName);
+  const mimeType = getMimeType(safeName);
 
-  res.setHeader('Content-Type', 'application/octet-stream');
-  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeName)}"`);
+  res.setHeader('Content-Type', mimeType);
+  res.setHeader('Content-Disposition', `attachment; filename="${asciiFallback}"; filename*=UTF-8''${utf8Filename}`);
   if (transfer.size > 0) {
     res.setHeader('Content-Length', transfer.size);
   }
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  // Anti-sniff and safe download headers to prevent false positive browser security warnings
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Download-Options', 'noopen');
+  res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.flushHeaders();
 
   transfer.receiverRes = res;
   transfer.status = 'streaming';
@@ -237,7 +533,92 @@ app.get('/api/transfer/download/:fileId', (req, res) => {
   });
 });
 
-// 3. Sender streams chunk
+// 3. Sender continuous streaming upload (High-Speed Direct Native Stream)
+app.post('/api/transfer/upload/:fileId', async (req, res) => {
+  const transfer = activeStreamTransfers.get(req.params.fileId);
+  if (!transfer) {
+    return res.status(404).json({ error: 'Transfer session expired or not found' });
+  }
+
+  req.pause(); // Pause stream immediately while ensuring receiver is ready
+
+  // Wait up to 6 seconds if receiver connection is still establishing
+  if (!transfer.receiverRes || transfer.status !== 'streaming') {
+    let waited = 0;
+    while ((!transfer.receiverRes || transfer.status !== 'streaming') && waited < 6000 && transfer.status !== 'cancelled') {
+      await new Promise(r => setTimeout(r, 50));
+      waited += 50;
+    }
+  }
+
+  if (!transfer.receiverRes || transfer.status === 'cancelled') {
+    return res.status(400).json({ error: 'Receiver not connected or transfer cancelled' });
+  }
+
+  if (!transfer.startTime) {
+    transfer.startTime = Date.now();
+  }
+
+  req.on('data', (chunk) => {
+    if (transfer.status === 'cancelled') {
+      try { req.destroy(); } catch (_) {}
+      return;
+    }
+
+    transfer.transferredBytes += chunk.length;
+
+    // Direct write to receiver's HTTP download response with backpressure (uncapped hardware line speed)
+    const canWrite = transfer.receiverRes.write(chunk);
+    if (!canWrite) {
+      req.pause();
+      transfer.receiverRes.once('drain', () => {
+        if (!req.destroyed && transfer.status === 'streaming') {
+          req.resume();
+        }
+      });
+    }
+
+    // Throttle progress sync to at most every 100ms
+    const now = Date.now();
+    if (!transfer.lastProgressSync || now - transfer.lastProgressSync >= 100) {
+      transfer.lastProgressSync = now;
+      const elapsedSec = (now - transfer.startTime) / 1000 || 0.001;
+      const speedMbps = ((transfer.transferredBytes * 8) / (1024 * 1024)) / elapsedSec;
+      broadcastTransferProgress(transfer, speedMbps);
+    }
+  });
+
+  req.on('end', () => {
+    if (transfer.receiverRes && transfer.status === 'streaming') {
+      transfer.receiverRes.end();
+    }
+    transfer.status = 'completed';
+
+    const elapsedSec = (Date.now() - transfer.startTime) / 1000 || 0.001;
+    const speedMbps = ((transfer.transferredBytes * 8) / (1024 * 1024)) / elapsedSec;
+    broadcastTransferProgress(transfer, speedMbps);
+    broadcastTransferCompleted(transfer);
+
+    res.json({ success: true, transferred: transfer.transferredBytes });
+    setTimeout(() => activeStreamTransfers.delete(transfer.fileId), 15000);
+  });
+
+  req.on('error', (err) => {
+    console.error('[Upload Stream] Request error:', err.message);
+    if (transfer.receiverRes) {
+      try { transfer.receiverRes.destroy(); } catch (_) {}
+    }
+    transfer.status = 'cancelled';
+    broadcastTransferCancelled(transfer, 'Upload connection error');
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  req.resume();
+});
+
+// 4. Sender streams chunk (Fallback compatibility)
 app.post('/api/transfer/chunk/:fileId', express.raw({ type: '*/*', limit: '100mb' }), async (req, res) => {
   const transfer = activeStreamTransfers.get(req.params.fileId);
   if (!transfer || !transfer.receiverRes || transfer.status !== 'streaming') {
@@ -246,14 +627,6 @@ app.post('/api/transfer/chunk/:fileId', express.raw({ type: '*/*', limit: '100mb
 
   const chunk = req.body;
   if (chunk && chunk.length > 0) {
-    // 500 Mbps Rate Limiter
-    const targetElapsedMs = (transfer.transferredBytes * 1000) / MAX_TRANSFER_SPEED_BPS;
-    const actualElapsedMs = Date.now() - transfer.startTime;
-    if (actualElapsedMs < targetElapsedMs) {
-      const waitMs = targetElapsedMs - actualElapsedMs;
-      await new Promise(r => setTimeout(r, waitMs));
-    }
-
     const ok = transfer.receiverRes.write(chunk);
     if (!ok) {
       await new Promise(resolve => transfer.receiverRes.once('drain', resolve));
@@ -262,7 +635,7 @@ app.post('/api/transfer/chunk/:fileId', express.raw({ type: '*/*', limit: '100mb
   }
 
   const elapsedSec = (Date.now() - transfer.startTime) / 1000 || 0.001;
-  const speedMbps = Math.min(500, ((transfer.transferredBytes * 8) / (1024 * 1024)) / elapsedSec);
+  const speedMbps = ((transfer.transferredBytes * 8) / (1024 * 1024)) / elapsedSec;
 
   // Sync progress across both sender and receiver
   broadcastTransferProgress(transfer, speedMbps);

@@ -5,6 +5,8 @@ const CHUNK_SIZE = 256 * 1024; // 256KB network packet (max safe WebRTC & WebSoc
 const LOW_WATER_MARK = 1024 * 1024; // 1MB low-water mark
 const HIGH_WATER_MARK = 8 * 1024 * 1024; // 8MB high-water mark
 
+const APP_VERSION = '1.0.1';
+
 // Device identification
 let myPeerId = null;
 let myDeviceName = null;
@@ -18,6 +20,7 @@ let currentPeerList = []; // Array of { id, deviceName, deviceType, color }
 // Active file & folder transfers tracking: transferKey -> transfer object
 const activeTransfers = new Map();
 const outboundQueue = new Map(); // fileId -> { items, targetPeerIds }
+const approvedBatches = new Set(); // batchId -> auto-accept subsequent files in batch
 
 let incomingRequest = null;
 let currentSelectedPeerId = null;
@@ -32,6 +35,9 @@ const syncStage = document.getElementById('syncStage');
 
 // UI Elements: Header & Network
 const networkIpBadge = document.getElementById('networkIpBadge');
+const updateAvailableBadge = document.getElementById('updateAvailableBadge');
+const updateBadgeText = document.getElementById('updateBadgeText');
+const checkUpdateBtn = document.getElementById('checkUpdateBtn');
 const selfAvatar = document.getElementById('selfAvatar');
 const selfIcon = document.getElementById('selfIcon');
 const selfNameInput = document.getElementById('selfNameInput');
@@ -130,6 +136,25 @@ const syncModalToReceiveFiles = document.getElementById('syncModalToReceiveFiles
 const syncModalIcon = document.getElementById('syncModalIcon');
 const syncModalIconContainer = document.getElementById('syncModalIconContainer');
 
+// UI Elements: Software Update Modal
+const updateModal = document.getElementById('updateModal');
+const closeUpdateModalBtn = document.getElementById('closeUpdateModalBtn');
+const updateModalTagBadge = document.getElementById('updateModalTagBadge');
+const updateModalSubtitle = document.getElementById('updateModalSubtitle');
+const updateModalCurrentVersion = document.getElementById('updateModalCurrentVersion');
+const updateModalLatestVersion = document.getElementById('updateModalLatestVersion');
+const updateModalNotes = document.getElementById('updateModalNotes');
+const updateDownloadInstallerBtn = document.getElementById('updateDownloadInstallerBtn');
+const updateDownloadZipBtn = document.getElementById('updateDownloadZipBtn');
+const updateDownloadBtnText = document.getElementById('updateDownloadBtnText');
+const updateSyncWebBtn = document.getElementById('updateSyncWebBtn');
+
+// UI Elements: How to Use Modal
+const howToUseBtn = document.getElementById('howToUseBtn');
+const howToUseModal = document.getElementById('howToUseModal');
+const closeHowToUseModalBtn = document.getElementById('closeHowToUseModalBtn');
+const gotItHowToUseBtn = document.getElementById('gotItHowToUseBtn');
+
 // QR Code State
 let serverIpUrl = '';
 let serverMdnsUrl = '';
@@ -141,15 +166,27 @@ let qrcodeObj = null;
 // ==========================================
 function switchTab(tab) {
   if (tab === 'radar') {
-    radarStage.classList.remove('hidden');
-    syncStage.classList.add('hidden');
     tabRadarBtn.className = 'flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-semibold bg-white/20 text-white shadow-md border border-white/20 backdrop-blur-md transition-all duration-200';
     tabSyncBtn.className = 'flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-medium text-white/60 hover:text-white transition-all duration-200';
+
+    syncStage.classList.add('stage-hidden');
+    syncStage.classList.remove('stage-visible');
+    radarStage.classList.remove('stage-hidden');
+    radarStage.classList.remove('hidden');
+    requestAnimationFrame(() => {
+      radarStage.classList.add('stage-visible');
+    });
   } else {
-    radarStage.classList.add('hidden');
-    syncStage.classList.remove('hidden');
     tabSyncBtn.className = 'flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-semibold bg-white/20 text-white shadow-md border border-white/20 backdrop-blur-md transition-all duration-200';
     tabRadarBtn.className = 'flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-medium text-white/60 hover:text-white transition-all duration-200';
+
+    radarStage.classList.add('stage-hidden');
+    radarStage.classList.remove('stage-visible');
+    syncStage.classList.remove('stage-hidden');
+    syncStage.classList.remove('hidden');
+    requestAnimationFrame(() => {
+      syncStage.classList.add('stage-visible');
+    });
   }
 }
 if (tabRadarBtn) tabRadarBtn.onclick = () => switchTab('radar');
@@ -202,7 +239,7 @@ function formatBytes(bytes, decimals = 2) {
 
 function showToast(message, type = 'info') {
   const toast = document.createElement('div');
-  toast.className = `px-4 py-3 rounded-2xl text-xs font-medium border shadow-2xl flex items-center space-x-2.5 backdrop-blur-2xl transition-all duration-300 animate-in fade-in slide-in-from-bottom-3 ${
+  toast.className = `toast-capsule px-4 py-3 rounded-2xl text-xs font-medium border shadow-2xl flex items-center space-x-2.5 backdrop-blur-2xl transition-all duration-300 ${
     type === 'success'
       ? 'bg-emerald-500/20 border-emerald-400/30 text-emerald-100 shadow-[0_8px_32px_rgba(0,0,0,0.5)]'
       : type === 'error'
@@ -214,8 +251,12 @@ function showToast(message, type = 'info') {
   toast.textContent = message;
   toastContainer.appendChild(toast);
   setTimeout(() => {
-    toast.remove();
-  }, 4500);
+    toast.classList.remove('toast-capsule');
+    toast.classList.add('toast-capsule-exit');
+    setTimeout(() => {
+      toast.remove();
+    }, 260);
+  }, 4200);
 }
 
 function appendSyncLog(msg, type = 'info') {
@@ -510,8 +551,19 @@ function initWebSocket() {
         const transferKey = Array.from(activeTransfers.keys()).find(k => k.startsWith(data.fileId));
         if (transferKey) {
           const transfer = activeTransfers.get(transferKey);
-          if (transfer) transfer.status = 'completed';
-          updateTransferCompleted(transferKey);
+          if (transfer) {
+            const wasCompleted = transfer.status === 'completed';
+            transfer.status = 'completed';
+            updateTransferCompleted(transferKey);
+            if (!wasCompleted) {
+              const queueData = outboundQueue.get(data.fileId);
+              if (queueData && queueData.onComplete) {
+                const cb = queueData.onComplete;
+                queueData.onComplete = null;
+                cb();
+              }
+            }
+          }
           showToast('Transfer completed successfully!', 'success');
         }
         break;
@@ -604,7 +656,7 @@ function renderPeers(peers) {
     const card = document.createElement('div');
     const isSelected = selectedPeerIds.has(peer.id);
     card.id = `peer-card-${peer.id}`;
-    card.className = `apple-glass-card p-5 flex flex-col items-center text-center cursor-pointer select-none relative group ${isSelected ? 'is-selected' : ''}`;
+    card.className = `apple-glass-card peer-card-enter p-5 flex flex-col items-center text-center cursor-pointer select-none relative group ${isSelected ? 'is-selected' : ''}`;
 
     const iconName = peer.deviceType === 'desktop' ? 'monitor' : peer.deviceType === 'tablet' ? 'tablet' : 'smartphone';
 
@@ -891,49 +943,68 @@ folderInput.onchange = (e) => {
 // ==========================================
 // 7. TRANSFER DISPATCH & PROGRESS MANAGEMENT
 // ==========================================
-function prepareAndSendItems(targetPeerIds, items) {
-  // Check if this is a folder transfer
-  const isFolder = items.some(item => item.isFolder || (item.relativePath && item.relativePath.includes('/')));
-  let folderName = 'Folder';
-  if (isFolder) {
-    const firstRel = (items[0].relativePath || '').replace(/\\/g, '/');
-    folderName = firstRel.split('/')[0] || 'Shared_Folder';
-  }
+function sendItemsSequentiallyToPeer(targetPeerId, items) {
+  const peer = currentPeerList.find(p => p.id === targetPeerId);
+  const targetName = peer ? peer.deviceName : 'Peer';
+  const batchId = 'batch_' + Math.random().toString(36).substring(2, 9);
+  let currentIndex = 0;
+  let batchCancelled = false;
 
-  const totalSize = items.reduce((sum, item) => sum + item.file.size, 0);
-  const fileId = Math.random().toString(36).substring(2, 9);
+  function sendNext() {
+    if (batchCancelled || currentIndex >= items.length) {
+      if (!batchCancelled && items.length > 1) {
+        showToast(`All ${items.length} files sent to ${targetName}!`, 'success');
+      }
+      return;
+    }
 
-  outboundQueue.set(fileId, {
-    fileId,
-    items,
-    isFolder,
-    folderName,
-    totalSize,
-    targetPeerIds
-  });
-
-  targetPeerIds.forEach(targetPeerId => {
-    const peer = currentPeerList.find(p => p.id === targetPeerId);
-    const targetName = peer ? peer.deviceName : 'Peer';
+    const item = items[currentIndex];
+    const fileId = Math.random().toString(36).substring(2, 9);
     const transferKey = `${fileId}_${targetPeerId}`;
+    const fileIndex = currentIndex + 1;
+    const fileTotal = items.length;
+
+    const displayName = fileTotal > 1 
+      ? `(${fileIndex}/${fileTotal}) ${item.file.name}` 
+      : item.file.name;
+
+    const queueData = {
+      fileId,
+      batchId,
+      batchIndex: fileIndex,
+      batchTotal: fileTotal,
+      targetPeerId,
+      items: [item],
+      isFolder: false,
+      totalSize: item.file.size,
+      onComplete: () => {
+        currentIndex++;
+        sendNext();
+      },
+      onCancel: () => {
+        batchCancelled = true;
+      }
+    };
+    outboundQueue.set(fileId, queueData);
 
     activeTransfers.set(transferKey, {
       fileId,
+      batchId,
+      batchIndex: fileIndex,
+      batchTotal: fileTotal,
       transferKey,
       targetPeerId,
       targetName,
-      name: isFolder ? folderName : (items.length > 1 ? `${items.length} Files` : items[0].file.name),
-      size: totalSize,
-      isFolder,
-      fileCount: items.length,
+      name: item.file.name,
+      size: item.file.size,
+      isFolder: false,
+      fileCount: 1,
       direction: 'outbound',
       status: 'requesting',
       cancelled: false
     });
 
-    const displayName = isFolder ? folderName : (items.length > 1 ? `${items.length} Files` : items[0].file.name);
-
-    createTransferUI(transferKey, isFolder ? `${folderName} (Folder)` : (items.length > 1 ? `${items.length} Files` : items[0].file.name), totalSize, 'outbound', targetName);
+    createTransferUI(transferKey, displayName, item.file.size, 'outbound', targetName);
 
     // Register session with backend stream bridge
     fetch('/api/transfer/create', {
@@ -943,10 +1014,10 @@ function prepareAndSendItems(targetPeerIds, items) {
         fileId,
         senderPeerId: myPeerId,
         targetPeerId,
-        name: displayName,
-        size: totalSize,
-        isFolder,
-        fileCount: items.length
+        name: item.file.name,
+        size: item.file.size,
+        isFolder: false,
+        fileCount: 1
       })
     }).catch(err => console.warn('[Transfer] Session create error:', err));
 
@@ -956,36 +1027,181 @@ function prepareAndSendItems(targetPeerIds, items) {
         type: 'file-request',
         target: targetPeerId,
         fileId,
+        batchId,
+        batchIndex: fileIndex,
+        batchTotal: fileTotal,
         file: {
-          name: isFolder ? folderName : (items.length > 1 ? `${items.length} Files` : items[0].file.name),
-          size: totalSize,
-          isFolder,
-          fileCount: items.length,
-          mime: isFolder ? 'application/zip' : (items.length === 1 ? (items[0].file.type || 'application/octet-stream') : 'multipart/mixed')
+          name: item.file.name,
+          size: item.file.size,
+          isFolder: false,
+          fileCount: 1,
+          mime: item.file.type || 'application/octet-stream'
         }
       }));
     } else {
       showToast('WebSocket connection error. Please refresh.', 'error');
     }
-  });
 
-  showToast(`Transfer requested to ${targetPeerIds.length} peer(s)`, 'info');
+    if (fileTotal > 1) {
+      showToast(`Sending file ${fileIndex} of ${fileTotal}: "${item.file.name}"`, 'info');
+    }
+  }
+
+  sendNext();
+}
+
+function prepareAndSendItems(targetPeerIds, items) {
+  if (!items || items.length === 0) return;
+
+  // Check if this is a folder transfer
+  const isFolder = items.some(item => item.isFolder || (item.relativePath && item.relativePath.includes('/')));
+
+  if (isFolder) {
+    let folderName = 'Folder';
+    const firstRel = (items[0].relativePath || '').replace(/\\/g, '/');
+    folderName = firstRel.split('/')[0] || 'Shared_Folder';
+
+    const totalSize = items.reduce((sum, item) => sum + item.file.size, 0);
+    const fileId = Math.random().toString(36).substring(2, 9);
+
+    outboundQueue.set(fileId, {
+      fileId,
+      items,
+      isFolder: true,
+      folderName,
+      totalSize,
+      targetPeerIds
+    });
+
+    targetPeerIds.forEach(targetPeerId => {
+      const peer = currentPeerList.find(p => p.id === targetPeerId);
+      const targetName = peer ? peer.deviceName : 'Peer';
+      const transferKey = `${fileId}_${targetPeerId}`;
+
+      activeTransfers.set(transferKey, {
+        fileId,
+        transferKey,
+        targetPeerId,
+        targetName,
+        name: folderName,
+        size: totalSize,
+        isFolder: true,
+        fileCount: items.length,
+        direction: 'outbound',
+        status: 'requesting',
+        cancelled: false
+      });
+
+      createTransferUI(transferKey, `${folderName} (Folder)`, totalSize, 'outbound', targetName);
+
+      // Register session with backend stream bridge
+      fetch('/api/transfer/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileId,
+          senderPeerId: myPeerId,
+          targetPeerId,
+          name: folderName,
+          size: totalSize,
+          isFolder: true,
+          fileCount: items.length
+        })
+      }).catch(err => console.warn('[Transfer] Session create error:', err));
+
+      // Send transfer request to peer
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'file-request',
+          target: targetPeerId,
+          fileId,
+          file: {
+            name: folderName,
+            size: totalSize,
+            isFolder: true,
+            fileCount: items.length,
+            mime: 'application/octet-stream'
+          }
+        }));
+      } else {
+        showToast('WebSocket connection error. Please refresh.', 'error');
+      }
+    });
+
+    showToast(`Folder transfer requested to ${targetPeerIds.length} peer(s)`, 'info');
+    return;
+  }
+
+  // Files transfer: Send items as they are, one after another! (Original filenames preserved, uncapped speed)
+  targetPeerIds.forEach(targetPeerId => {
+    sendItemsSequentiallyToPeer(targetPeerId, items);
+  });
 }
 
 function handleIncomingFileRequest(data) {
   console.log('[Transfer] Incoming transfer request from peer:', data);
+
+  // If this file belongs to a batch that the user already accepted, auto-accept and download immediately!
+  if (data.batchId && approvedBatches.has(data.batchId)) {
+    const { sender, senderName, fileId, file, batchIndex, batchTotal } = data;
+    const transferKey = `${fileId}_${sender}`;
+
+    activeTransfers.set(transferKey, {
+      fileId,
+      batchId: data.batchId,
+      transferKey,
+      targetPeerId: sender,
+      targetName: senderName,
+      name: file.name,
+      size: file.size,
+      isFolder: false,
+      fileCount: 1,
+      direction: 'inbound',
+      status: 'connecting',
+      cancelled: false
+    });
+
+    const displayName = (batchTotal && batchTotal > 1)
+      ? `(${batchIndex}/${batchTotal}) ${file.name}`
+      : file.name;
+
+    createTransferUI(transferKey, displayName, file.size, 'inbound', senderName);
+
+    // Stream download safely via fetch and in-memory Blob to prevent browser "Insecure download blocked" warnings
+    receiveStreamToFile(fileId, file.name, file.size, transferKey, file.type || file.mime);
+
+    // Notify sender accepted
+    ws.send(JSON.stringify({
+      type: 'file-response',
+      target: sender,
+      fileId,
+      accepted: true
+    }));
+
+    showToast(`Receiving (${batchIndex}/${batchTotal}): "${file.name}"`, 'info');
+    return;
+  }
+
   incomingRequest = data;
-  incomingSenderText.textContent = `${data.senderName} wants to send ${data.file.isFolder ? 'a folder' : 'files'}`;
-  incomingFileName.textContent = data.file.name;
-  incomingFileSize.textContent = `${formatBytes(data.file.size)} ${data.file.isFolder ? `(${data.file.fileCount} files)` : ''}`;
+  const isMulti = data.batchTotal && data.batchTotal > 1;
 
   if (data.file.isFolder) {
+    incomingSenderText.textContent = `${data.senderName} wants to send a folder`;
+    incomingFileName.textContent = data.file.name;
+    incomingFileSize.textContent = `${formatBytes(data.file.size)} (${data.file.fileCount} files)`;
     incomingFileBadgeIcon.innerHTML = '<i data-lucide="folder" class="w-5 h-5 text-amber-400"></i>';
     incomingModalTitle.textContent = 'Incoming Folder Transfer';
     acceptBtn.innerHTML = '<i data-lucide="folder-down" class="w-4 h-4"></i><span>Select Folder & Receive</span>';
   } else {
+    incomingSenderText.textContent = isMulti
+      ? `${data.senderName} wants to send ${data.batchTotal} files`
+      : `${data.senderName} wants to send a file`;
+    incomingFileName.textContent = isMulti
+      ? `(1 of ${data.batchTotal}) ${data.file.name}`
+      : data.file.name;
+    incomingFileSize.textContent = formatBytes(data.file.size);
     incomingFileBadgeIcon.innerHTML = '<i data-lucide="file" class="w-5 h-5 text-blue-400"></i>';
-    incomingModalTitle.textContent = 'Incoming File Request';
+    incomingModalTitle.textContent = isMulti ? 'Incoming Files Request' : 'Incoming File Request';
     acceptBtn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i><span>Accept & Start</span>';
   }
 
@@ -1011,7 +1227,11 @@ function handleIncomingFileRequest(data) {
 
 acceptBtn.onclick = async () => {
   if (!incomingRequest) return;
-  const { sender, senderName, fileId, file } = incomingRequest;
+  const { sender, senderName, fileId, file, batchId, batchIndex, batchTotal } = incomingRequest;
+
+  if (batchId) {
+    approvedBatches.add(batchId);
+  }
 
   let chosenHandle = null;
 
@@ -1041,6 +1261,7 @@ acceptBtn.onclick = async () => {
   const transferKey = `${fileId}_${sender}`;
   activeTransfers.set(transferKey, {
     fileId,
+    batchId,
     transferKey,
     targetPeerId: sender,
     targetName: senderName,
@@ -1064,12 +1285,15 @@ acceptBtn.onclick = async () => {
   receiverState.accumulatedFiles = [];
   receiverState.destDirHandle = chosenHandle;
 
-  createTransferUI(transferKey, file.name, file.size, 'inbound', senderName);
+  const displayName = (batchTotal && batchTotal > 1)
+    ? `(${batchIndex || 1}/${batchTotal}) ${file.name}`
+    : file.name;
+
+  createTransferUI(transferKey, displayName, file.size, 'inbound', senderName);
 
   if (!file.isFolder) {
-    // Single file: Trigger native browser download directly from server stream
-    const downloadUrl = `/api/transfer/download/${fileId}`;
-    triggerDownload(downloadUrl, file.name);
+    // Stream download safely via fetch and in-memory Blob to prevent browser "Insecure download blocked" warnings
+    receiveStreamToFile(fileId, file.name, file.size, transferKey, file.type || file.mime);
   }
 
   ws.send(JSON.stringify({
@@ -1085,7 +1309,10 @@ acceptBtn.onclick = async () => {
 
 declineBtn.onclick = () => {
   if (!incomingRequest) return;
-  const { sender, fileId } = incomingRequest;
+  const { sender, fileId, batchId } = incomingRequest;
+  if (batchId) {
+    approvedBatches.delete(batchId);
+  }
   incomingModal.classList.add('hidden');
 
   ws.send(JSON.stringify({
@@ -1105,7 +1332,7 @@ function handleFileResponse(data) {
   const queueData = outboundQueue.get(data.fileId);
 
   if (data.accepted) {
-    showToast(`${data.senderName} accepted the transfer`, 'success');
+    showToast(`${data.senderName} accepted "${transfer ? transfer.name : 'file'}"`, 'success');
     const speedEl = document.getElementById(`speed-${transferKey}`);
     if (speedEl) speedEl.textContent = 'Starting transfer...';
 
@@ -1113,16 +1340,19 @@ function handleFileResponse(data) {
       // FOLDER TRANSFER: Stream directly peer-to-peer / WS relay so receiver writes files directly to disk (NO ZIP!)
       startSendingOutbound(data.sender, data.fileId);
     } else {
-      // SINGLE FILE: Stream to receiver's browser download manager
+      // FILE TRANSFER: Stream native HTTP upload directly to receiver's browser download manager
       setTimeout(() => {
         const t = activeTransfers.get(transferKey);
         if (t && t.status !== 'transferring' && t.status !== 'completed' && !t.cancelled) {
           startSendingStreamOutbound(data.fileId);
         }
-      }, 500);
+      }, 300);
     }
   } else {
     showToast(`${data.senderName} declined the transfer`, 'error');
+    if (queueData && queueData.onCancel) {
+      queueData.onCancel();
+    }
     cancelTransfer(transferKey, false, 'Declined by recipient');
   }
 }
@@ -1132,7 +1362,7 @@ function createTransferUI(transferKey, name, size, direction, peerName) {
   transfersSection.classList.remove('hidden');
   const div = document.createElement('div');
   div.id = `transfer-${transferKey}`;
-  div.className = 'apple-glass p-4 space-y-2.5 rounded-2xl transition-all';
+  div.className = 'apple-glass peer-card-enter p-4 space-y-2.5 rounded-2xl transition-all';
 
   div.innerHTML = `
     <div class="flex items-center justify-between">
@@ -1154,7 +1384,7 @@ function createTransferUI(transferKey, name, size, direction, peerName) {
       </div>
     </div>
     <div class="w-full bg-black/40 border border-white/10 h-2.5 rounded-full overflow-hidden p-0.5 backdrop-blur-sm">
-      <div id="progress-${transferKey}" class="bg-gradient-to-r from-blue-500 to-cyan-400 h-full rounded-full transition-all duration-150 shadow-sm" style="width: 0%"></div>
+      <div id="progress-${transferKey}" class="bg-gradient-to-r from-blue-500 to-cyan-400 progress-shimmer h-full rounded-full transition-all duration-200 shadow-sm" style="width: 0%"></div>
     </div>
     <div class="flex justify-between text-[11px] text-white/60 font-medium">
       <span id="transferred-${transferKey}">0 B / ${formatBytes(size)}</span>
@@ -1189,7 +1419,12 @@ function updateTransferProgress(transferKey, transferred, total, speedMbps) {
   const clearBtn = document.getElementById(`clear-btn-${transferKey}`);
 
   if (prog) prog.style.width = `${percent}%`;
-  if (speed) speed.textContent = `${speedMbps.toFixed(1)} Mbps`;
+  if (speed) {
+    const numSpeed = typeof speedMbps === 'number' ? speedMbps : parseFloat(speedMbps);
+    speed.textContent = (!isNaN(numSpeed) && isFinite(numSpeed) && numSpeed >= 0)
+      ? `${numSpeed.toFixed(1)} Mbps`
+      : 'Transferring...';
+  }
   if (trans) trans.textContent = `${formatBytes(transferred)} / ${formatBytes(total)}`;
   if (perc) perc.textContent = `${percent}%`;
 
@@ -1210,7 +1445,15 @@ function cancelTransfer(transferKey, notifyPeer = true, reason = 'Cancelled') {
     transfer.cancelled = true;
     transfer.status = 'cancelled';
 
+    if (transfer.xhr) {
+      try { transfer.xhr.abort(); } catch (_) {}
+    }
+
     if (transfer.fileId) {
+      const queueData = outboundQueue.get(transfer.fileId);
+      if (queueData && queueData.onCancel) {
+        queueData.onCancel();
+      }
       fetch(`/api/transfer/cancel/${transfer.fileId}`, { method: 'POST' }).catch(() => {});
     }
 
@@ -1239,12 +1482,18 @@ function cancelTransfer(transferKey, notifyPeer = true, reason = 'Cancelled') {
 
 function removeTransferUI(transferKey) {
   const el = document.getElementById(`transfer-${transferKey}`);
-  if (el) el.remove();
-  activeTransfers.delete(transferKey);
-
-  if (transfersList.children.length === 0) {
-    transfersSection.classList.add('hidden');
+  if (el) {
+    el.style.transition = 'opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1)';
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(8px) scale(0.96)';
+    setTimeout(() => {
+      el.remove();
+      if (transfersList.children.length === 0) {
+        transfersSection.classList.add('hidden');
+      }
+    }, 220);
   }
+  activeTransfers.delete(transferKey);
 }
 
 if (clearAllTransfersBtn) {
@@ -1594,6 +1843,88 @@ function updateTransferCompleted(transferKey) {
   if (clearBtn) clearBtn.classList.remove('hidden');
 }
 
+function getClientMime(ext) {
+  const map = {
+    pdf: 'application/pdf',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    svg: 'image/svg+xml',
+    mp4: 'video/mp4',
+    webm: 'video/webm',
+    mkv: 'video/x-matroska',
+    mp3: 'audio/mpeg',
+    wav: 'audio/wav',
+    zip: 'application/zip',
+    rar: 'application/vnd.rar',
+    '7z': 'application/x-7z-compressed',
+    tar: 'application/x-tar',
+    gz: 'application/gzip',
+    txt: 'text/plain',
+    json: 'application/json',
+    csv: 'text/csv',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+  };
+  return map[ext] || '';
+}
+
+// Ingest stream via fetch and deliver as an in-memory Blob.
+// This completely bypasses Chrome/Edge "Insecure download blocked" warnings on LAN HTTP networks,
+// because Blob URLs (blob:...) are exempt from browser insecure download blocking policies.
+async function receiveStreamToFile(fileId, fileName, totalSize, transferKey, fileMime) {
+  try {
+    const downloadUrl = `/api/transfer/download/${fileId}`;
+    const res = await fetch(downloadUrl);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const transfer = activeTransfers.get(transferKey);
+    if (transfer) transfer.status = 'transferring';
+
+    const reader = res.body.getReader();
+    const chunks = [];
+    let receivedBytes = 0;
+    let lastProgressTime = Date.now();
+    let bytesSinceLast = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      chunks.push(value);
+      receivedBytes += value.byteLength;
+      bytesSinceLast += value.byteLength;
+
+      const now = Date.now();
+      if (now - lastProgressTime >= 100) {
+        const timeDiff = (now - lastProgressTime) / 1000;
+        const speedMbps = timeDiff > 0 ? ((bytesSinceLast * 8) / (1024 * 1024 * timeDiff)) : 0;
+        updateTransferProgress(transferKey, receivedBytes, totalSize || receivedBytes, speedMbps);
+        lastProgressTime = now;
+        bytesSinceLast = 0;
+      }
+    }
+
+    const ext = (fileName.split('.').pop() || '').toLowerCase();
+    const mime = fileMime || getClientMime(ext) || 'application/octet-stream';
+    const blob = new Blob(chunks, { type: mime });
+
+    // Deliver cleanly to user via Blob URL
+    triggerDownload(blob, fileName);
+
+    if (transfer) transfer.status = 'completed';
+    updateTransferCompleted(transferKey);
+    showToast(`Transfer of "${fileName}" completed!`, 'success');
+  } catch (err) {
+    console.error('[Receive Stream] Error downloading file stream:', err);
+    showToast(`Download error: ${err.message}`, 'error');
+    cancelTransfer(transferKey, false, err.message);
+  }
+}
+
 function triggerDownload(urlOrBlob, filename) {
   const safeFilename = filename || 'downloaded-file';
   const a = document.createElement('a');
@@ -1605,6 +1936,8 @@ function triggerDownload(urlOrBlob, filename) {
     isObjectURL = true;
   }
   a.download = safeFilename;
+  a.rel = 'noopener noreferrer';
+  a.target = '_self';
   document.body.appendChild(a);
   a.click();
   setTimeout(() => {
@@ -1615,10 +1948,10 @@ function triggerDownload(urlOrBlob, filename) {
   }, 2000);
 }
 
-// Synchronized Outbound Streaming (500 Mbps Rate-Limited, Lockstep Sync)
+// Synchronized Outbound Streaming (High-Speed Native HTTP Stream, Uncapped Link Speed, Lockstep Sync)
 async function startSendingStreamOutbound(fileId) {
   const queueData = outboundQueue.get(fileId);
-  if (!queueData) return;
+  if (!queueData || !queueData.items || queueData.items.length === 0) return;
 
   const transferEntry = Array.from(activeTransfers.values()).find(t => t.fileId === fileId);
   const targetPeerId = transferEntry ? transferEntry.targetPeerId : null;
@@ -1626,80 +1959,70 @@ async function startSendingStreamOutbound(fileId) {
   const transfer = activeTransfers.get(transferKey);
   if (!transfer || transfer.cancelled) return;
 
+  // If folder, redirect to directory streaming pipeline
+  if (queueData.isFolder) {
+    if (targetPeerId) {
+      startSendingOutbound(targetPeerId, fileId);
+    }
+    return;
+  }
+
   transfer.status = 'transferring';
   const speedEl = document.getElementById(`speed-${transferKey}`);
-  if (speedEl) speedEl.textContent = 'Transferring (500 Mbps max)...';
+  if (speedEl) speedEl.textContent = 'Transferring...';
 
-  const MAX_SPEED_BPS = (500 * 1024 * 1024) / 8; // 500 Mbps = 65,536,000 bytes/sec
-  const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
-  let totalUploaded = 0;
+  const item = queueData.items[0];
   const startTime = Date.now();
 
   try {
-    for (let fileIdx = 0; fileIdx < queueData.items.length; fileIdx++) {
-      if (transfer.cancelled) break;
-      const item = queueData.items[fileIdx];
+    const xhr = new XMLHttpRequest();
+    transfer.xhr = xhr;
 
-      if (item.file.size === 0) {
-        // 0-byte file
-        await fetch(`/api/transfer/chunk/${fileId}?path=${encodeURIComponent(item.relativePath)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/octet-stream' },
-          body: new ArrayBuffer(0)
-        });
-        continue;
-      }
+    xhr.open('POST', `/api/transfer/upload/${fileId}`);
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
 
-      let fileOffset = 0;
-      while (fileOffset < item.file.size) {
-        if (transfer.cancelled) break;
+    xhr.upload.onprogress = (evt) => {
+      if (transfer.cancelled) return;
+      const loaded = evt.loaded;
+      const total = evt.total || item.file.size;
+      const elapsedSec = (Date.now() - startTime) / 1000 || 0.001;
+      const speedMbps = ((loaded * 8) / (1024 * 1024)) / elapsedSec;
+      updateTransferProgress(transferKey, loaded, total, speedMbps);
+    };
 
-        // 1. 500 Mbps Rate Limiter
-        const targetElapsedMs = (totalUploaded * 1000) / MAX_SPEED_BPS;
-        const actualElapsedMs = Date.now() - startTime;
-        if (actualElapsedMs < targetElapsedMs) {
-          const waitMs = targetElapsedMs - actualElapsedMs;
-          await new Promise(r => setTimeout(r, waitMs));
+    xhr.onload = () => {
+      if (transfer.cancelled) return;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        transfer.status = 'completed';
+        updateTransferCompleted(transferKey);
+        if (queueData.onComplete) {
+          const cb = queueData.onComplete;
+          queueData.onComplete = null;
+          cb();
         }
-
-        if (transfer.cancelled) break;
-
-        // 2. Read 1MB chunk from disk (zero RAM accumulation)
-        const chunkEnd = Math.min(fileOffset + CHUNK_SIZE, item.file.size);
-        const blobSlice = item.file.slice(fileOffset, chunkEnd);
-        const chunkBuffer = await blobSlice.arrayBuffer();
-
-        // 3. Post chunk to server stream
-        const query = queueData.isFolder
-          ? `path=${encodeURIComponent(item.relativePath)}`
-          : '';
-
-        const resp = await fetch(`/api/transfer/chunk/${fileId}?${query}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/octet-stream' },
-          body: chunkBuffer
-        });
-
-        if (!resp.ok) {
-          throw new Error(`Upload failed with status ${resp.status}`);
-        }
-
-        const result = await resp.json();
-        fileOffset += chunkBuffer.byteLength;
-        totalUploaded += chunkBuffer.byteLength;
-
-        // Synchronous update
-        updateTransferProgress(transferKey, result.transferred, queueData.totalSize, result.speedMbps);
+      } else {
+        console.error('[Upload Stream] Failed HTTP status:', xhr.status);
+        if (queueData.onCancel) queueData.onCancel();
+        cancelTransfer(transferKey, true, `Upload failed (${xhr.status})`);
       }
-    }
+    };
 
-    if (!transfer.cancelled) {
-      await fetch(`/api/transfer/finish/${fileId}`, { method: 'POST' });
-      transfer.status = 'completed';
-      updateTransferCompleted(transferKey);
-    }
+    xhr.onerror = () => {
+      if (!transfer.cancelled) {
+        console.error('[Upload Stream] Network error');
+        if (queueData.onCancel) queueData.onCancel();
+        cancelTransfer(transferKey, true, 'Upload network error');
+      }
+    };
+
+    xhr.onabort = () => {
+      console.log('[Upload Stream] Upload aborted');
+    };
+
+    xhr.send(item.file);
   } catch (err) {
     console.error('[Stream Transfer] Error:', err);
+    if (queueData.onCancel) queueData.onCancel();
     cancelTransfer(transferKey, true, err.message);
   }
 }
@@ -1840,17 +2163,6 @@ async function streamQueueViaWebSocket(queueData, targetPeerId) {
 
         if (transfer.cancelled || ws.readyState !== WebSocket.OPEN) break;
 
-        // 500 Mbps Rate Limiter
-        const MAX_SPEED_BPS = (500 * 1024 * 1024) / 8;
-        const targetElapsedMs = (totalOffset * 1000) / MAX_SPEED_BPS;
-        const actualElapsedMs = Date.now() - startTime;
-        if (actualElapsedMs < targetElapsedMs) {
-          const waitMs = targetElapsedMs - actualElapsedMs;
-          await new Promise(r => setTimeout(r, waitMs));
-        }
-
-        if (transfer.cancelled || ws.readyState !== WebSocket.OPEN) break;
-
         const chunkEnd = Math.min(blockOffset + CHUNK_SIZE, blockBuffer.byteLength);
         const chunkBuffer = blockBuffer.slice(blockOffset, chunkEnd);
 
@@ -1955,17 +2267,6 @@ async function streamQueueToPeer(channel, queueData, targetPeerId) {
               resolve();
             };
           });
-        }
-
-        if (transfer.cancelled || channel.readyState !== 'open') break;
-
-        // 500 Mbps Rate Limiter
-        const MAX_SPEED_BPS = (500 * 1024 * 1024) / 8;
-        const targetElapsedMs = (totalOffset * 1000) / MAX_SPEED_BPS;
-        const actualElapsedMs = Date.now() - startTime;
-        if (actualElapsedMs < targetElapsedMs) {
-          const waitMs = targetElapsedMs - actualElapsedMs;
-          await new Promise(r => setTimeout(r, waitMs));
         }
 
         if (transfer.cancelled || channel.readyState !== 'open') break;
@@ -2715,3 +3016,151 @@ if (autoSyncToggle) {
     }
   };
 }
+
+// ==========================================
+// 10. SOFTWARE UPDATE CHECKER & IN-APP DELIVERY
+// ==========================================
+let latestAvailableUpdate = null;
+
+async function checkForSoftwareUpdates(isManualCheck = false) {
+  try {
+    if (isManualCheck) {
+      showToast('Checking for software updates...', 'info');
+    }
+    const res = await fetch('/api/check-update');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (data && data.updateAvailable) {
+      latestAvailableUpdate = data;
+
+      // Reveal header notification badge with glowing animation
+      if (updateAvailableBadge) {
+        updateAvailableBadge.classList.remove('hidden');
+        updateAvailableBadge.classList.add('inline-flex');
+        if (updateBadgeText) updateBadgeText.textContent = `Update v${data.latestVersion}`;
+      }
+
+      // Populate update modal dialog
+      if (updateModalCurrentVersion) updateModalCurrentVersion.textContent = `v${data.currentVersion || APP_VERSION}`;
+      if (updateModalLatestVersion) updateModalLatestVersion.textContent = `v${data.latestVersion}`;
+      if (updateModalTagBadge) updateModalTagBadge.textContent = `v${data.latestVersion}`;
+      if (updateDownloadZipBtn) {
+        updateDownloadZipBtn.href = data.zipUrl || 'https://github.com/RahulRedkar/LocalDrop-LAN/releases/latest';
+      }
+      if (updateDownloadInstallerBtn) {
+        updateDownloadInstallerBtn.href = data.installerUrl || 'https://github.com/RahulRedkar/LocalDrop-LAN/releases/latest';
+      }
+      if (data.releaseNotes && updateModalNotes) {
+        updateModalNotes.innerHTML = `<p class="whitespace-pre-line text-white/80 leading-relaxed">${data.releaseNotes.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`;
+      }
+
+      if (isManualCheck) {
+        openUpdateModal();
+      } else {
+        showToast(`✨ Update v${data.latestVersion} available! Click "Update" to install.`, 'success');
+      }
+    } else {
+      if (isManualCheck) {
+        if (data && data.offline) {
+          showToast(`Running LocalDrop v${APP_VERSION} (Offline LAN mode)`, 'info');
+        } else {
+          showToast(`LocalDrop LAN is up to date (v${APP_VERSION})!`, 'success');
+        }
+      }
+    }
+  } catch (err) {
+    if (isManualCheck) {
+      showToast('Could not reach update server. Check your network.', 'warn');
+    }
+  }
+}
+
+function openUpdateModal() {
+  if (!updateModal) return;
+  updateModal.classList.remove('hidden');
+  if (latestAvailableUpdate) {
+    if (updateModalCurrentVersion) updateModalCurrentVersion.textContent = `v${latestAvailableUpdate.currentVersion || APP_VERSION}`;
+    if (updateModalLatestVersion) updateModalLatestVersion.textContent = `v${latestAvailableUpdate.latestVersion}`;
+    if (updateModalTagBadge) updateModalTagBadge.textContent = `v${latestAvailableUpdate.latestVersion}`;
+    if (updateDownloadZipBtn && latestAvailableUpdate.zipUrl) {
+      updateDownloadZipBtn.href = latestAvailableUpdate.zipUrl;
+    }
+    if (updateDownloadInstallerBtn && latestAvailableUpdate.installerUrl) {
+      updateDownloadInstallerBtn.href = latestAvailableUpdate.installerUrl;
+    }
+  } else {
+    if (updateModalCurrentVersion) updateModalCurrentVersion.textContent = `v${APP_VERSION}`;
+    if (updateModalLatestVersion) updateModalLatestVersion.textContent = `v${APP_VERSION}`;
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeUpdateModal() {
+  if (updateModal) updateModal.classList.add('hidden');
+}
+
+if (updateAvailableBadge) updateAvailableBadge.onclick = openUpdateModal;
+if (checkUpdateBtn) checkUpdateBtn.onclick = () => {
+  if (latestAvailableUpdate && latestAvailableUpdate.updateAvailable) {
+    openUpdateModal();
+  } else {
+    checkForSoftwareUpdates(true);
+  }
+};
+if (closeUpdateModalBtn) closeUpdateModalBtn.onclick = closeUpdateModal;
+if (updateModal) {
+  updateModal.onclick = (e) => {
+    if (e.target === updateModal) closeUpdateModal();
+  };
+}
+
+// How to Use Modal Handlers
+function openHowToUseModal() {
+  if (howToUseModal) {
+    howToUseModal.classList.remove('hidden');
+    if (window.lucide) lucide.createIcons();
+  }
+}
+function closeHowToUseModal() {
+  if (howToUseModal) howToUseModal.classList.add('hidden');
+}
+if (howToUseBtn) howToUseBtn.onclick = openHowToUseModal;
+if (closeHowToUseModalBtn) closeHowToUseModalBtn.onclick = closeHowToUseModal;
+if (gotItHowToUseBtn) gotItHowToUseBtn.onclick = closeHowToUseModal;
+if (howToUseModal) {
+  howToUseModal.onclick = (e) => {
+    if (e.target === howToUseModal) closeHowToUseModal();
+  };
+}
+
+if (updateSyncWebBtn) {
+  updateSyncWebBtn.onclick = async () => {
+    try {
+      updateSyncWebBtn.disabled = true;
+      updateSyncWebBtn.innerHTML = '<i data-lucide="refresh-cw" class="w-3.5 h-3.5 animate-spin"></i><span>Updating UI...</span>';
+      if (window.lucide) lucide.createIcons();
+
+      const res = await fetch('/api/update/sync-web', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('Web UI updated! Reloading in 1s...', 'success');
+        setTimeout(() => window.location.reload(true), 1200);
+      } else {
+        showToast(data.error || 'Failed to sync web UI', 'error');
+        updateSyncWebBtn.disabled = false;
+        updateSyncWebBtn.innerHTML = '<i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-blue-400"></i><span>Update Web UI</span>';
+        if (window.lucide) lucide.createIcons();
+      }
+    } catch (err) {
+      showToast('Error syncing web assets: ' + err.message, 'error');
+      updateSyncWebBtn.disabled = false;
+      updateSyncWebBtn.innerHTML = '<i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-blue-400"></i><span>Update Web UI</span>';
+      if (window.lucide) lucide.createIcons();
+    }
+  };
+}
+
+// Initial background update check after 3 seconds, then every 30 minutes
+setTimeout(() => checkForSoftwareUpdates(false), 3000);
+setInterval(() => checkForSoftwareUpdates(false), 30 * 60 * 1000);

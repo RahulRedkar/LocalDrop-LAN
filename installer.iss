@@ -1,6 +1,6 @@
 ; Script generated for LocalDrop LAN Installer
 #define MyAppName "LocalDrop LAN"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Rahul Redkar"
 #define MyAppExeName "LocalDrop-LAN.exe"
 
@@ -9,9 +9,19 @@ AppId={{8B321348-1244-48FE-95C4-13EF94677762}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+AppPublisherURL=https://github.com/RahulRedkar/LocalDrop-LAN
+AppSupportURL=https://github.com/RahulRedkar/LocalDrop-LAN/issues
+AppUpdatesURL=https://github.com/RahulRedkar/LocalDrop-LAN/releases
+VersionInfoVersion=1.0.1.0
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription=LocalDrop LAN - High-Speed Secure P2P File & Folder Sharing
+VersionInfoTextVersion={#MyAppVersion}
+VersionInfoCopyright=Copyright (C) 2026 {#MyAppPublisher}
+VersionInfoProductName={#MyAppName}
+VersionInfoProductVersion={#MyAppVersion}
 DefaultDirName={userpf}\{#MyAppName}
 DisableProgramGroupPage=yes
-OutputDir=e:\LANShare\dist
+OutputDir=dist
 OutputBaseFilename=LocalDrop-LAN-Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -27,8 +37,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "autostart"; Description: "Automatically start LocalDrop on Windows startup"; GroupDescription: "Windows Integration:"
 
 [Files]
-Source: "e:\LANShare\LocalDrop-LAN.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "e:\LANShare\public\*"; DestDir: "{app}\public"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "LocalDrop-LAN.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "public\*"; DestDir: "{app}\public"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
