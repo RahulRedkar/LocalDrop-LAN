@@ -17,7 +17,7 @@ const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 8080;
 const HTTPS_PORT = process.env.HTTPS_PORT || 8443;
 const MDNS_HOST = 'filetrans.local';
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 const GITHUB_REPO = 'RahulRedkar/LocalDrop-LAN';
 
 let httpsServer = null;
@@ -172,9 +172,10 @@ function checkRawPackageJson() {
   });
 }
 
-async function fetchLatestGitHubVersion() {
+async function fetchLatestGitHubVersion(force = false) {
   const now = Date.now();
-  if (updateCache.data && now - updateCache.lastChecked < 10 * 60 * 1000) {
+  // 60-second background cache; bypassed immediately if force === true (manual check)
+  if (!force && updateCache.data && now - updateCache.lastChecked < 60 * 1000) {
     return updateCache.data;
   }
 
@@ -225,6 +226,19 @@ async function fetchLatestGitHubVersion() {
               publishedAt: json.published_at || new Date().toISOString()
             };
             updateCache = { lastChecked: now, data: result };
+
+            // Broadcast update alert to all currently connected peers on the LAN
+            if (updateAvailable) {
+              peers.forEach(peer => {
+                if (peer.ws && peer.ws.readyState === WebSocket.OPEN) {
+                  peer.ws.send(JSON.stringify({
+                    type: 'software-update-available',
+                    data: result
+                  }));
+                }
+              });
+            }
+
             return resolve(result);
           }
         } catch (_) {}
@@ -247,7 +261,8 @@ async function fetchLatestGitHubVersion() {
 // REST API for checking updates
 app.get('/api/check-update', async (req, res) => {
   try {
-    const updateInfo = await fetchLatestGitHubVersion();
+    const force = req.query.force === 'true' || Boolean(req.query.t);
+    const updateInfo = await fetchLatestGitHubVersion(force);
     res.json(updateInfo);
   } catch (err) {
     res.json({

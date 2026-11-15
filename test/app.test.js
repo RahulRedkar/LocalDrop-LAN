@@ -27,14 +27,14 @@ function it(name, fn) {
 async function runTests() {
   // 1. Version Consistency Tests
   console.log('📦 Section 1: Version Consistency');
-  await it('package.json has version 1.0.1', () => {
+  await it('package.json has version 1.0.2', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
-    assert.strictEqual(pkg.version, '1.0.1');
+    assert.strictEqual(pkg.version, '1.0.2');
   });
 
-  await it('installer.iss has version 1.0.1', () => {
+  await it('installer.iss has version 1.0.2', () => {
     const iss = fs.readFileSync(path.join(__dirname, '..', 'installer.iss'), 'utf8');
-    assert.ok(iss.includes('#define MyAppVersion "1.0.1"'), 'installer.iss must define MyAppVersion "1.0.1"');
+    assert.ok(iss.includes('#define MyAppVersion "1.0.2"'), 'installer.iss must define MyAppVersion "1.0.2"');
   });
 
   await it('installer.iss uses portable relative paths', () => {
@@ -44,14 +44,14 @@ async function runTests() {
     assert.ok(iss.includes('Source: "LocalDrop-LAN.exe"'), 'installer.iss Source must be relative LocalDrop-LAN.exe');
   });
 
-  await it('server.js defines APP_VERSION = "1.0.1"', () => {
+  await it('server.js defines APP_VERSION = "1.0.2"', () => {
     const serverCode = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-    assert.ok(serverCode.includes("APP_VERSION = '1.0.1'"), 'server.js must define APP_VERSION = 1.0.1');
+    assert.ok(serverCode.includes("APP_VERSION = '1.0.2'"), 'server.js must define APP_VERSION = 1.0.2');
   });
 
-  await it('public/app.js defines APP_VERSION = "1.0.1"', () => {
+  await it('public/app.js defines APP_VERSION = "1.0.2"', () => {
     const appCode = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
-    assert.ok(appCode.includes("APP_VERSION = '1.0.1'"), 'public/app.js must define APP_VERSION = 1.0.1');
+    assert.ok(appCode.includes("APP_VERSION = '1.0.2'"), 'public/app.js must define APP_VERSION = 1.0.2');
   });
 
   await it('public/app.js handles speedMbps safely without throwing TypeError', () => {
@@ -71,7 +71,7 @@ async function runTests() {
     assert.ok(html.includes('howToUseModal'), 'index.html must contain howToUseModal');
     assert.ok(html.includes('howToUseBtn'), 'index.html must contain howToUseBtn');
     assert.ok(html.includes('updateAvailableBadge'), 'index.html must contain updateAvailableBadge');
-    assert.ok(html.includes('app.js?v=1.0.1'), 'index.html must reference app.js?v=1.0.1');
+    assert.ok(html.includes('app.js?v=1.0.2'), 'index.html must reference app.js?v=1.0.2');
   });
 
   // 3. Server Integration Tests
@@ -121,11 +121,11 @@ async function runTests() {
   require('../server.js');
   await new Promise(r => setTimeout(r, 1200));
 
-  await it(`GET /api/info returns version 1.0.1 on port ${testPort}`, async () => {
+  await it(`GET /api/info returns version 1.0.2 on port ${testPort}`, async () => {
     const res = await makeRequest(testPort, '/api/info');
     assert.strictEqual(res.status, 200);
     const json = JSON.parse(res.body);
-    assert.strictEqual(json.version, '1.0.1');
+    assert.strictEqual(json.version, '1.0.2');
     assert.ok(Array.isArray(json.ips), 'ips must be an array');
     assert.ok(json.hostname, 'hostname must be present');
   });
@@ -134,7 +134,7 @@ async function runTests() {
     const res = await makeRequest(testPort, '/api/check-update');
     assert.strictEqual(res.status, 200);
     const json = JSON.parse(res.body);
-    assert.strictEqual(json.currentVersion, '1.0.1');
+    assert.strictEqual(json.currentVersion, '1.0.2');
     assert.strictEqual(typeof json.updateAvailable, 'boolean');
   });
 

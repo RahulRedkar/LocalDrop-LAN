@@ -84,13 +84,13 @@ jobs:
             dist/LocalDrop-LAN-Setup.exe
             dist/LocalDrop-LAN-Setup.zip
             LocalDrop-LAN.exe
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.1' }}
-          name: LocalDrop LAN ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.1' }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.2' }}
+          name: LocalDrop LAN ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.2' }}
           body: |
-            ## LocalDrop LAN ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.1' }}
+            ## LocalDrop LAN ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.2' }}
             
             ### What's New:
-            - UI changes
+            - UI changes and transfer bug fixes
           draft: false
           prerelease: false
         env:

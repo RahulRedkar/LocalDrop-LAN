@@ -5,7 +5,7 @@ const CHUNK_SIZE = 256 * 1024; // 256KB network packet (max safe WebRTC & WebSoc
 const LOW_WATER_MARK = 1024 * 1024; // 1MB low-water mark
 const HIGH_WATER_MARK = 8 * 1024 * 1024; // 8MB high-water mark
 
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 
 // Device identification
 let myPeerId = null;
@@ -148,6 +148,12 @@ const updateDownloadInstallerBtn = document.getElementById('updateDownloadInstal
 const updateDownloadZipBtn = document.getElementById('updateDownloadZipBtn');
 const updateDownloadBtnText = document.getElementById('updateDownloadBtnText');
 const updateSyncWebBtn = document.getElementById('updateSyncWebBtn');
+
+// UI Elements: Force Update Top Banner
+const updateBanner = document.getElementById('updateBanner');
+const updateBannerText = document.getElementById('updateBannerText');
+const updateBannerActionBtn = document.getElementById('updateBannerActionBtn');
+const updateBannerDismissBtn = document.getElementById('updateBannerDismissBtn');
 
 // UI Elements: How to Use Modal
 const howToUseBtn = document.getElementById('howToUseBtn');
@@ -573,6 +579,13 @@ function initWebSocket() {
         const transferKey = Array.from(activeTransfers.keys()).find(k => k.startsWith(data.fileId));
         if (transferKey) {
           cancelTransfer(transferKey, false, data.reason || 'Cancelled');
+        }
+        break;
+      }
+
+      case 'software-update-available': {
+        if (data && data.data) {
+          applyUpdateData(data.data, false);
         }
         break;
       }
@@ -3022,44 +3035,124 @@ if (autoSyncToggle) {
 // ==========================================
 let latestAvailableUpdate = null;
 
+function compareSemverClient(v1, v2) {
+  const p1 = (v1 || '').replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  const p2 = (v2 || '').replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+    const a = p1[i] || 0;
+    const b = p2[i] || 0;
+    if (a > b) return 1;
+    if (a < b) return -1;
+  }
+  return 0;
+}
+
+function applyUpdateData(data, isManualCheck = false) {
+  if (!data || !data.updateAvailable) return;
+  latestAvailableUpdate = data;
+
+  // Reveal header notification badge with glowing animation
+  if (updateAvailableBadge) {
+    updateAvailableBadge.classList.remove('hidden');
+    updateAvailableBadge.classList.add('inline-flex');
+    if (updateBadgeText) updateBadgeText.textContent = `Update v${data.latestVersion}`;
+  }
+
+  // Reveal persistent top banner for immediate user visibility
+  if (updateBanner) {
+    updateBanner.classList.remove('hidden');
+    updateBanner.classList.add('flex');
+    if (updateBannerText) {
+      updateBannerText.textContent = `Update Available: LocalDrop LAN v${data.latestVersion} is ready with important improvements!`;
+    }
+  }
+
+  // Populate update modal dialog
+  if (updateModalCurrentVersion) updateModalCurrentVersion.textContent = `v${data.currentVersion || APP_VERSION}`;
+  if (updateModalLatestVersion) updateModalLatestVersion.textContent = `v${data.latestVersion}`;
+  if (updateModalTagBadge) updateModalTagBadge.textContent = `v${data.latestVersion}`;
+  if (updateDownloadZipBtn) {
+    updateDownloadZipBtn.href = data.zipUrl || `https://github.com/${GITHUB_REPO}/releases/latest`;
+  }
+  if (updateDownloadInstallerBtn) {
+    updateDownloadInstallerBtn.href = data.installerUrl || `https://github.com/${GITHUB_REPO}/releases/latest`;
+  }
+  if (data.releaseNotes && updateModalNotes) {
+    updateModalNotes.innerHTML = `<p class="whitespace-pre-line text-white/80 leading-relaxed">${data.releaseNotes.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`;
+  }
+
+  if (isManualCheck) {
+    openUpdateModal();
+  } else {
+    showToast(`✨ Update v${data.latestVersion} available! Click "Update" to install.`, 'success');
+  }
+}
+
 async function checkForSoftwareUpdates(isManualCheck = false) {
   try {
     if (isManualCheck) {
       showToast('Checking for software updates...', 'info');
     }
-    const res = await fetch('/api/check-update');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+
+    let data = null;
+
+    // 1. Try local server check endpoint with cache-busting
+    try {
+      const res = await fetch(`/api/check-update?force=${isManualCheck ? 'true' : 'false'}&t=${Date.now()}`, {
+        cache: 'no-store'
+      });
+      if (res.ok) {
+        data = await res.json();
+      }
+    } catch (_) {}
+
+    // 2. Direct GitHub Releases API Fallback:
+    // If local backend is offline, an older binary, or returned cached stale data,
+    // query public GitHub directly from client browser via CORS!
+    if (!data || !data.updateAvailable) {
+      try {
+        const ghRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+          cache: 'no-store',
+          headers: { 'Accept': 'application/vnd.github.v3+json' }
+        });
+        if (ghRes.ok) {
+          const ghJson = await ghRes.json();
+          const tag = (ghJson.tag_name || ghJson.name || '').trim();
+          const latestVer = tag.replace(/^v/, '');
+          const hasUpdate = compareSemverClient(latestVer, APP_VERSION) > 0;
+
+          let installerUrl = `https://github.com/${GITHUB_REPO}/releases/latest/download/LocalDrop-LAN-Setup.exe`;
+          let zipUrl = `https://github.com/${GITHUB_REPO}/releases/latest/download/LocalDrop-LAN-Setup.zip`;
+          if (Array.isArray(ghJson.assets)) {
+            const setupAsset = ghJson.assets.find(a => a.name && a.name.endsWith('.exe'));
+            if (setupAsset && setupAsset.browser_download_url) {
+              installerUrl = setupAsset.browser_download_url;
+            }
+            const zipAsset = ghJson.assets.find(a => a.name && a.name.endsWith('.zip'));
+            if (zipAsset && zipAsset.browser_download_url) {
+              zipUrl = zipAsset.browser_download_url;
+            }
+          }
+
+          if (hasUpdate) {
+            data = {
+              currentVersion: APP_VERSION,
+              latestVersion: latestVer,
+              updateAvailable: true,
+              releaseName: ghJson.name || tag,
+              releaseNotes: ghJson.body || 'New features and improvements.',
+              releaseUrl: ghJson.html_url || `https://github.com/${GITHUB_REPO}/releases`,
+              installerUrl,
+              zipUrl,
+              publishedAt: ghJson.published_at || new Date().toISOString()
+            };
+          }
+        }
+      } catch (_) {}
+    }
 
     if (data && data.updateAvailable) {
-      latestAvailableUpdate = data;
-
-      // Reveal header notification badge with glowing animation
-      if (updateAvailableBadge) {
-        updateAvailableBadge.classList.remove('hidden');
-        updateAvailableBadge.classList.add('inline-flex');
-        if (updateBadgeText) updateBadgeText.textContent = `Update v${data.latestVersion}`;
-      }
-
-      // Populate update modal dialog
-      if (updateModalCurrentVersion) updateModalCurrentVersion.textContent = `v${data.currentVersion || APP_VERSION}`;
-      if (updateModalLatestVersion) updateModalLatestVersion.textContent = `v${data.latestVersion}`;
-      if (updateModalTagBadge) updateModalTagBadge.textContent = `v${data.latestVersion}`;
-      if (updateDownloadZipBtn) {
-        updateDownloadZipBtn.href = data.zipUrl || 'https://github.com/RahulRedkar/LocalDrop-LAN/releases/latest';
-      }
-      if (updateDownloadInstallerBtn) {
-        updateDownloadInstallerBtn.href = data.installerUrl || 'https://github.com/RahulRedkar/LocalDrop-LAN/releases/latest';
-      }
-      if (data.releaseNotes && updateModalNotes) {
-        updateModalNotes.innerHTML = `<p class="whitespace-pre-line text-white/80 leading-relaxed">${data.releaseNotes.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`;
-      }
-
-      if (isManualCheck) {
-        openUpdateModal();
-      } else {
-        showToast(`✨ Update v${data.latestVersion} available! Click "Update" to install.`, 'success');
-      }
+      applyUpdateData(data, isManualCheck);
     } else {
       if (isManualCheck) {
         if (data && data.offline) {
@@ -3112,6 +3205,21 @@ if (closeUpdateModalBtn) closeUpdateModalBtn.onclick = closeUpdateModal;
 if (updateModal) {
   updateModal.onclick = (e) => {
     if (e.target === updateModal) closeUpdateModal();
+  };
+}
+
+// Update Banner Event Handlers
+if (updateBannerActionBtn) {
+  updateBannerActionBtn.onclick = () => {
+    openUpdateModal();
+  };
+}
+if (updateBannerDismissBtn) {
+  updateBannerDismissBtn.onclick = () => {
+    if (updateBanner) {
+      updateBanner.classList.add('hidden');
+      updateBanner.classList.remove('flex');
+    }
   };
 }
 
