@@ -28,9 +28,18 @@ function resolveScriptPath() {
 function runPowerShellScript(action, ssid = 'LocalDrop-Direct', password = 'localdrop8080') {
   return new Promise((resolve) => {
     if (!isWindows) {
+      if (action === 'stop') {
+        return resolve({
+          supported: false,
+          active: false,
+          success: true,
+          message: 'Hotspot is not supported on this platform or already stopped.'
+        });
+      }
       return resolve({
         supported: false,
         active: false,
+        success: false,
         reason: 'Temporary hotspot creation is supported on Windows laptops.'
       });
     }
@@ -101,7 +110,7 @@ async function startHotspot(options = {}) {
 async function stopHotspot() {
   const result = await runPowerShellScript('stop');
   return {
-    success: Boolean(result.success),
+    success: result.success !== undefined ? Boolean(result.success) : true,
     message: result.message || 'Hotspot stopped.'
   };
 }
