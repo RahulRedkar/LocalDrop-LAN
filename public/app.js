@@ -5,7 +5,7 @@ const CHUNK_SIZE = 256 * 1024; // 256KB network packet (max safe WebRTC & WebSoc
 const LOW_WATER_MARK = 1024 * 1024; // 1MB low-water mark
 const HIGH_WATER_MARK = 8 * 1024 * 1024; // 8MB high-water mark
 
-const APP_VERSION = '1.0.3';
+const APP_VERSION = '1.0.4';
 
 // Device identification
 let myPeerId = null;
@@ -30,8 +30,50 @@ const selectedPeerIds = new Set();
 // UI Elements: Navigation & Views
 const tabRadarBtn = document.getElementById('tabRadarBtn');
 const tabSyncBtn = document.getElementById('tabSyncBtn');
+const tabTalkBtn = document.getElementById('tabTalkBtn');
+const talkboxUnreadBadge = document.getElementById('talkboxUnreadBadge');
 const radarStage = document.getElementById('radarStage');
 const syncStage = document.getElementById('syncStage');
+const talkboxStage = document.getElementById('talkboxStage');
+
+// UI Elements: TalkBox LAN Messenger
+const talkboxOnlineCount = document.getElementById('talkboxOnlineCount');
+const talkboxChannelGeneral = document.getElementById('talkboxChannelGeneral');
+const talkboxGeneralBadge = document.getElementById('talkboxGeneralBadge');
+const talkboxPeerChannels = document.getElementById('talkboxPeerChannels');
+const talkboxNoPeersNotice = document.getElementById('talkboxNoPeersNotice');
+const talkboxActiveAvatar = document.getElementById('talkboxActiveAvatar');
+const talkboxActiveTitle = document.getElementById('talkboxActiveTitle');
+const talkboxActiveBadge = document.getElementById('talkboxActiveBadge');
+const talkboxActiveSubtitle = document.getElementById('talkboxActiveSubtitle');
+const talkboxClearChatBtn = document.getElementById('talkboxClearChatBtn');
+const talkboxMessagesList = document.getElementById('talkboxMessagesList');
+const talkboxEmptyMessages = document.getElementById('talkboxEmptyMessages');
+const talkboxStagedImageBox = document.getElementById('talkboxStagedImageBox');
+const talkboxStagedImageThumb = document.getElementById('talkboxStagedImageThumb');
+const talkboxStagedImageName = document.getElementById('talkboxStagedImageName');
+const talkboxStagedImageSize = document.getElementById('talkboxStagedImageSize');
+const talkboxCancelImageBtn = document.getElementById('talkboxCancelImageBtn');
+const talkboxComposerForm = document.getElementById('talkboxComposerForm');
+const talkboxImageInput = document.getElementById('talkboxImageInput');
+const talkboxAttachBtn = document.getElementById('talkboxAttachBtn');
+const talkboxTextInput = document.getElementById('talkboxTextInput');
+const talkboxSendBtn = document.getElementById('talkboxSendBtn');
+
+// UI Elements: Image Lightbox Modal
+const imageLightboxModal = document.getElementById('imageLightboxModal');
+const lightboxImage = document.getElementById('lightboxImage');
+const lightboxImageName = document.getElementById('lightboxImageName');
+const lightboxDownloadBtn = document.getElementById('lightboxDownloadBtn');
+const closeLightboxBtn = document.getElementById('closeLightboxBtn');
+
+// TalkBox State
+let currentActiveTab = 'radar';
+let talkboxActiveChannel = 'general';
+const talkboxHistory = { general: [] };
+const talkboxUnreadCounts = { general: 0 };
+const seenChatMessageIds = new Set();
+let stagedChatImage = null;
 
 // UI Elements: Header & Network
 const networkIpBadge = document.getElementById('networkIpBadge');
@@ -197,32 +239,67 @@ let qrcodeObj = null;
 // 1. NAVIGATION & TAB SWITCHING
 // ==========================================
 function switchTab(tab) {
+  currentActiveTab = tab;
   if (tab === 'radar') {
-    tabRadarBtn.className = 'flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-semibold bg-white/20 text-white shadow-md border border-white/20 backdrop-blur-md transition-all duration-200';
-    tabSyncBtn.className = 'flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-medium text-white/60 hover:text-white transition-all duration-200';
+    tabRadarBtn.className = 'flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-semibold bg-white/20 text-white shadow-md border border-white/20 backdrop-blur-md transition-all duration-200 cursor-pointer';
+    tabSyncBtn.className = 'flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-medium text-white/60 hover:text-white transition-all duration-200 cursor-pointer';
+    if (tabTalkBtn) tabTalkBtn.className = 'relative flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-medium text-white/60 hover:text-white transition-all duration-200 cursor-pointer';
 
     syncStage.classList.add('stage-hidden');
     syncStage.classList.remove('stage-visible');
+    if (talkboxStage) {
+      talkboxStage.classList.add('stage-hidden');
+      talkboxStage.classList.remove('stage-visible');
+    }
     radarStage.classList.remove('stage-hidden');
     radarStage.classList.remove('hidden');
     requestAnimationFrame(() => {
       radarStage.classList.add('stage-visible');
     });
-  } else {
-    tabSyncBtn.className = 'flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-semibold bg-white/20 text-white shadow-md border border-white/20 backdrop-blur-md transition-all duration-200';
-    tabRadarBtn.className = 'flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-medium text-white/60 hover:text-white transition-all duration-200';
+  } else if (tab === 'sync') {
+    tabSyncBtn.className = 'flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-semibold bg-white/20 text-white shadow-md border border-white/20 backdrop-blur-md transition-all duration-200 cursor-pointer';
+    tabRadarBtn.className = 'flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-medium text-white/60 hover:text-white transition-all duration-200 cursor-pointer';
+    if (tabTalkBtn) tabTalkBtn.className = 'relative flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-medium text-white/60 hover:text-white transition-all duration-200 cursor-pointer';
 
     radarStage.classList.add('stage-hidden');
     radarStage.classList.remove('stage-visible');
+    if (talkboxStage) {
+      talkboxStage.classList.add('stage-hidden');
+      talkboxStage.classList.remove('stage-visible');
+    }
     syncStage.classList.remove('stage-hidden');
     syncStage.classList.remove('hidden');
     requestAnimationFrame(() => {
       syncStage.classList.add('stage-visible');
     });
+  } else if (tab === 'talk') {
+    if (tabTalkBtn) tabTalkBtn.className = 'relative flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-semibold bg-white/20 text-white shadow-md border border-white/20 backdrop-blur-md transition-all duration-200 cursor-pointer';
+    tabRadarBtn.className = 'flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-medium text-white/60 hover:text-white transition-all duration-200 cursor-pointer';
+    tabSyncBtn.className = 'flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-medium text-white/60 hover:text-white transition-all duration-200 cursor-pointer';
+
+    radarStage.classList.add('stage-hidden');
+    radarStage.classList.remove('stage-visible');
+    syncStage.classList.add('stage-hidden');
+    syncStage.classList.remove('stage-visible');
+    if (talkboxStage) {
+      talkboxStage.classList.remove('stage-hidden');
+      talkboxStage.classList.remove('hidden');
+      requestAnimationFrame(() => {
+        talkboxStage.classList.add('stage-visible');
+      });
+    }
+
+    // Reset unread for the currently viewed channel
+    talkboxUnreadCounts[talkboxActiveChannel] = 0;
+    updateTalkboxUnreadBadges();
+    scrollTalkboxToBottom();
+    if (talkboxTextInput) talkboxTextInput.focus();
   }
+  if (window.lucide) lucide.createIcons();
 }
 if (tabRadarBtn) tabRadarBtn.onclick = () => switchTab('radar');
 if (tabSyncBtn) tabSyncBtn.onclick = () => switchTab('sync');
+if (tabTalkBtn) tabTalkBtn.onclick = () => switchTab('talk');
 
 // ==========================================
 // 2. HELPER UTILITIES
@@ -503,6 +580,12 @@ function initWebSocket() {
         currentPeerList = data.peers.filter(p => p.id !== myPeerId);
         renderPeers(currentPeerList);
         updateSyncPeerSelect(currentPeerList);
+        updateTalkboxPeersList(currentPeerList);
+        break;
+      }
+
+      case 'chat-message': {
+        handleIncomingChatMessage(data);
         break;
       }
 
@@ -3492,3 +3575,468 @@ if (noWifiBannerDismissBtn) {
 // Check network status on load and periodically
 checkNetworkStatus();
 setInterval(checkNetworkStatus, 15000);
+
+// ==========================================
+// TALKBOX LOCAL MESSENGER & QUICK IMAGE SHARING
+// ==========================================
+
+function updateTalkboxPeersList(peerList) {
+  if (!talkboxPeerChannels) return;
+  const count = (peerList ? peerList.length : 0) + 1;
+  if (talkboxOnlineCount) talkboxOnlineCount.textContent = `${count} online`;
+
+  if (!peerList || peerList.length === 0) {
+    if (talkboxNoPeersNotice) talkboxNoPeersNotice.classList.remove('hidden');
+    const peerButtons = talkboxPeerChannels.querySelectorAll('.talkbox-peer-btn');
+    peerButtons.forEach(btn => btn.remove());
+    return;
+  }
+
+  if (talkboxNoPeersNotice) talkboxNoPeersNotice.classList.add('hidden');
+
+  const activePeerIds = new Set(peerList.map(p => p.id));
+  const existingButtons = talkboxPeerChannels.querySelectorAll('.talkbox-peer-btn');
+  existingButtons.forEach(btn => {
+    const pid = btn.getAttribute('data-peer-id');
+    if (!activePeerIds.has(pid)) btn.remove();
+  });
+
+  peerList.forEach(peer => {
+    let btn = talkboxPeerChannels.querySelector(`[data-peer-id="${peer.id}"]`);
+    const unread = talkboxUnreadCounts[peer.id] || 0;
+    const isSelected = talkboxActiveChannel === peer.id;
+    const initial = (peer.name || 'P').charAt(0).toUpperCase();
+
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.className = `talkbox-peer-btn w-full flex items-center justify-between p-2 rounded-2xl text-white transition text-left cursor-pointer ${
+        isSelected ? 'bg-white/20 border border-white/25 shadow-sm' : 'hover:bg-white/10 border border-transparent'
+      }`;
+      btn.setAttribute('data-peer-id', peer.id);
+      btn.onclick = () => selectTalkboxChannel(peer.id);
+      talkboxPeerChannels.appendChild(btn);
+    } else {
+      btn.className = `talkbox-peer-btn w-full flex items-center justify-between p-2 rounded-2xl text-white transition text-left cursor-pointer ${
+        isSelected ? 'bg-white/20 border border-white/25 shadow-sm' : 'hover:bg-white/10 border border-transparent'
+      }`;
+    }
+
+    btn.innerHTML = `
+      <div class="flex items-center space-x-2.5 min-w-0">
+        <div class="w-7 h-7 rounded-xl flex items-center justify-center text-white text-xs font-bold shrink-0 border border-white/20" style="background-color: ${peer.color || '#5856D6'};">
+          ${initial}
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center space-x-1.5">
+            <span class="font-semibold text-xs text-white truncate">${escapeHtml(peer.name || 'Peer')}</span>
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          </div>
+          <p class="text-[10px] text-white/50 truncate">${peer.deviceType || 'Device'}</p>
+        </div>
+      </div>
+      <span class="talkbox-peer-badge ${unread > 0 ? '' : 'hidden'} bg-pink-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">${unread}</span>
+    `;
+  });
+
+  if (window.lucide) lucide.createIcons();
+}
+
+function selectTalkboxChannel(channelId) {
+  talkboxActiveChannel = channelId;
+  talkboxUnreadCounts[channelId] = 0;
+  updateTalkboxUnreadBadges();
+
+  if (talkboxChannelGeneral) {
+    if (channelId === 'general') {
+      talkboxChannelGeneral.className = 'w-full flex items-center justify-between p-2.5 rounded-2xl bg-white/20 border border-white/25 text-white transition text-left cursor-pointer shadow-sm';
+    } else {
+      talkboxChannelGeneral.className = 'w-full flex items-center justify-between p-2.5 rounded-2xl bg-white/10 border border-transparent hover:bg-white/15 text-white transition text-left cursor-pointer';
+    }
+  }
+
+  if (talkboxPeerChannels) {
+    const peerButtons = talkboxPeerChannels.querySelectorAll('.talkbox-peer-btn');
+    peerButtons.forEach(btn => {
+      const pid = btn.getAttribute('data-peer-id');
+      if (pid === channelId) {
+        btn.className = 'talkbox-peer-btn w-full flex items-center justify-between p-2 rounded-2xl text-white transition text-left cursor-pointer bg-white/20 border border-white/25 shadow-sm';
+      } else {
+        btn.className = 'talkbox-peer-btn w-full flex items-center justify-between p-2 rounded-2xl text-white transition text-left cursor-pointer hover:bg-white/10 border border-transparent';
+      }
+    });
+  }
+
+  renderTalkboxActiveHeader();
+  renderTalkboxMessages();
+  if (talkboxTextInput) talkboxTextInput.focus();
+}
+
+function renderTalkboxActiveHeader() {
+  if (talkboxActiveChannel === 'general') {
+    if (talkboxActiveAvatar) {
+      talkboxActiveAvatar.textContent = '📢';
+      talkboxActiveAvatar.style.backgroundColor = '';
+      talkboxActiveAvatar.className = 'w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center text-white text-xs font-bold border border-white/20 shrink-0';
+    }
+    if (talkboxActiveTitle) talkboxActiveTitle.textContent = 'General LAN Room';
+    if (talkboxActiveBadge) {
+      talkboxActiveBadge.textContent = 'Broadcast';
+      talkboxActiveBadge.className = 'text-[9px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2 py-0.2 rounded-full';
+    }
+    if (talkboxActiveSubtitle) talkboxActiveSubtitle.textContent = 'Messages sent here are shared with all devices on this Wi-Fi network';
+  } else {
+    const peer = currentPeerList.find(p => p.id === talkboxActiveChannel);
+    const peerName = peer ? peer.name : 'Direct Message';
+    const initial = peerName.charAt(0).toUpperCase();
+
+    if (talkboxActiveAvatar) {
+      talkboxActiveAvatar.textContent = initial;
+      talkboxActiveAvatar.style.backgroundColor = peer ? peer.color : '#5856D6';
+      talkboxActiveAvatar.className = 'w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold border border-white/20 shrink-0';
+    }
+    if (talkboxActiveTitle) talkboxActiveTitle.textContent = peerName;
+    if (talkboxActiveBadge) {
+      talkboxActiveBadge.textContent = 'Private 1-on-1';
+      talkboxActiveBadge.className = 'text-[9px] font-semibold bg-purple-500/20 text-purple-300 border border-purple-400/30 px-2 py-0.2 rounded-full';
+    }
+    if (talkboxActiveSubtitle) talkboxActiveSubtitle.textContent = 'Private direct messaging between you and this device';
+  }
+}
+
+function updateTalkboxUnreadBadges() {
+  const genUnread = talkboxUnreadCounts['general'] || 0;
+  if (talkboxGeneralBadge) {
+    if (genUnread > 0) {
+      talkboxGeneralBadge.textContent = genUnread;
+      talkboxGeneralBadge.classList.remove('hidden');
+    } else {
+      talkboxGeneralBadge.classList.add('hidden');
+    }
+  }
+
+  if (talkboxPeerChannels) {
+    const peerButtons = talkboxPeerChannels.querySelectorAll('.talkbox-peer-btn');
+    peerButtons.forEach(btn => {
+      const pid = btn.getAttribute('data-peer-id');
+      const badge = btn.querySelector('.talkbox-peer-badge');
+      const count = talkboxUnreadCounts[pid] || 0;
+      if (badge) {
+        if (count > 0) {
+          badge.textContent = count;
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+      }
+    });
+  }
+
+  let total = 0;
+  for (const k in talkboxUnreadCounts) {
+    total += talkboxUnreadCounts[k] || 0;
+  }
+  if (talkboxUnreadBadge) {
+    if (total > 0 && currentActiveTab !== 'talk') {
+      talkboxUnreadBadge.textContent = total > 99 ? '99+' : total;
+      talkboxUnreadBadge.classList.remove('hidden');
+    } else {
+      talkboxUnreadBadge.classList.add('hidden');
+    }
+  }
+}
+
+function renderTalkboxMessages() {
+  if (!talkboxMessagesList) return;
+  const messages = talkboxHistory[talkboxActiveChannel] || [];
+  talkboxMessagesList.innerHTML = '';
+
+  if (messages.length === 0) {
+    if (talkboxEmptyMessages) {
+      talkboxMessagesList.appendChild(talkboxEmptyMessages);
+      talkboxEmptyMessages.classList.remove('hidden');
+    }
+    return;
+  }
+
+  messages.forEach(msg => {
+    appendTalkboxMessageBubble(msg, false);
+  });
+
+  scrollTalkboxToBottom();
+}
+
+function appendTalkboxMessageBubble(msg, autoScroll = true) {
+  if (!talkboxMessagesList) return;
+  if (talkboxEmptyMessages && talkboxEmptyMessages.parentNode === talkboxMessagesList) {
+    talkboxEmptyMessages.remove();
+  }
+
+  const isSelf = (msg.sender === myPeerId);
+  const timeStr = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const bubbleWrapper = document.createElement('div');
+  bubbleWrapper.className = `flex flex-col ${isSelf ? 'items-end' : 'items-start'} space-y-1 animate-in fade-in duration-150`;
+
+  let imageHtml = '';
+  if (msg.image && msg.image.data) {
+    const safeImgName = escapeHtml(msg.image.name || 'image.png');
+    imageHtml = `
+      <div class="relative group mt-1.5 overflow-hidden rounded-xl border border-white/20 max-w-xs cursor-pointer shadow-md bg-black/40">
+        <img src="${msg.image.data}" alt="${safeImgName}" class="talkbox-thumbnail max-h-56 object-cover rounded-xl transition hover:scale-[1.02]" />
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center space-x-2">
+          <button type="button" class="talkbox-zoom-btn bg-white/20 hover:bg-white/30 text-white p-2 rounded-full backdrop-blur-md transition shadow cursor-pointer" title="Enlarge Image">
+            <i data-lucide="zoom-in" class="w-4 h-4"></i>
+          </button>
+          <a href="${msg.image.data}" download="${safeImgName}" class="bg-white/20 hover:bg-white/30 text-white p-2 rounded-full backdrop-blur-md transition shadow no-underline cursor-pointer" title="Download Image">
+            <i data-lucide="download" class="w-4 h-4"></i>
+          </a>
+        </div>
+      </div>
+    `;
+  }
+
+  let textHtml = '';
+  if (msg.text) {
+    const safeText = escapeHtml(msg.text).replace(/\n/g, '<br/>');
+    textHtml = `<div class="text-xs leading-relaxed break-words">${safeText}</div>`;
+  }
+
+  if (isSelf) {
+    bubbleWrapper.innerHTML = `
+      <div class="flex items-center space-x-1.5 text-[10px] text-white/50 px-1">
+        <span>You</span>
+        <span>•</span>
+        <span>${timeStr}</span>
+      </div>
+      <div class="apple-glass p-3 rounded-2xl rounded-tr-sm bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white shadow-lg max-w-md sm:max-w-lg border border-white/20">
+        ${textHtml}
+        ${imageHtml}
+      </div>
+    `;
+  } else {
+    const senderName = escapeHtml(msg.senderName || 'Peer');
+    const senderColor = msg.senderColor || '#007AFF';
+    const initial = senderName.charAt(0).toUpperCase();
+
+    bubbleWrapper.innerHTML = `
+      <div class="flex items-center space-x-1.5 text-[10px] text-white/60 px-1">
+        <span class="w-3.5 h-3.5 rounded-full inline-flex items-center justify-center text-[8px] font-bold text-white border border-white/20" style="background-color: ${senderColor};">${initial}</span>
+        <span class="font-semibold text-white/80">${senderName}</span>
+        <span>•</span>
+        <span>${timeStr}</span>
+      </div>
+      <div class="apple-glass-well p-3 rounded-2xl rounded-tl-sm text-white shadow-lg max-w-md sm:max-w-lg border border-white/15 bg-white/[0.08]">
+        ${textHtml}
+        ${imageHtml}
+      </div>
+    `;
+  }
+
+  if (msg.image && msg.image.data) {
+    const thumb = bubbleWrapper.querySelector('.talkbox-thumbnail');
+    const zoomBtn = bubbleWrapper.querySelector('.talkbox-zoom-btn');
+    const openAction = (e) => {
+      e.stopPropagation();
+      openImageLightbox(msg.image.data, msg.image.name);
+    };
+    if (thumb) thumb.onclick = openAction;
+    if (zoomBtn) zoomBtn.onclick = openAction;
+  }
+
+  talkboxMessagesList.appendChild(bubbleWrapper);
+  if (window.lucide) lucide.createIcons();
+
+  if (autoScroll) {
+    scrollTalkboxToBottom();
+  }
+}
+
+function scrollTalkboxToBottom() {
+  if (!talkboxMessagesList) return;
+  requestAnimationFrame(() => {
+    talkboxMessagesList.scrollTop = talkboxMessagesList.scrollHeight;
+  });
+}
+
+function stageChatImage(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    const img = new Image();
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+      const maxDim = 1920;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        setStagedImageObject(file.name, 'image/jpeg', compressedDataUrl);
+      } else {
+        setStagedImageObject(file.name, file.type, dataUrl);
+      }
+    };
+    img.src = dataUrl;
+  };
+  reader.readAsDataURL(file);
+}
+
+function setStagedImageObject(name, type, dataUrl) {
+  stagedChatImage = { name, type, data: dataUrl };
+  if (talkboxStagedImageBox) {
+    talkboxStagedImageBox.classList.remove('hidden');
+    if (talkboxStagedImageThumb) talkboxStagedImageThumb.src = dataUrl;
+    if (talkboxStagedImageName) talkboxStagedImageName.textContent = name;
+    if (talkboxStagedImageSize) {
+      const approxBytes = Math.round((dataUrl.length * 3) / 4);
+      talkboxStagedImageSize.textContent = formatBytes(approxBytes);
+    }
+  }
+  if (talkboxTextInput) talkboxTextInput.focus();
+}
+
+function clearStagedImage() {
+  stagedChatImage = null;
+  if (talkboxStagedImageBox) talkboxStagedImageBox.classList.add('hidden');
+  if (talkboxImageInput) talkboxImageInput.value = '';
+}
+
+function sendTalkboxMessage() {
+  const text = talkboxTextInput ? talkboxTextInput.value.trim() : '';
+  if (!text && !stagedChatImage) return;
+
+  const target = talkboxActiveChannel === 'general' ? null : talkboxActiveChannel;
+  const msgPayload = {
+    type: 'chat-message',
+    id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    target: target,
+    text: text,
+    image: stagedChatImage,
+    timestamp: Date.now()
+  };
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(msgPayload));
+  } else {
+    showToast('Cannot send message: Not connected to network', 'error');
+    return;
+  }
+
+  if (talkboxTextInput) talkboxTextInput.value = '';
+  clearStagedImage();
+}
+
+function handleIncomingChatMessage(msg) {
+  if (seenChatMessageIds.has(msg.id)) return;
+  seenChatMessageIds.add(msg.id);
+
+  const channelKey = msg.target ? (msg.sender === myPeerId ? msg.target : msg.sender) : 'general';
+
+  if (!talkboxHistory[channelKey]) {
+    talkboxHistory[channelKey] = [];
+  }
+  talkboxHistory[channelKey].push(msg);
+
+  const isCurrentActive = (currentActiveTab === 'talk' && talkboxActiveChannel === channelKey);
+
+  if (isCurrentActive) {
+    appendTalkboxMessageBubble(msg, true);
+  } else {
+    talkboxUnreadCounts[channelKey] = (talkboxUnreadCounts[channelKey] || 0) + 1;
+    updateTalkboxUnreadBadges();
+
+    if (msg.sender !== myPeerId) {
+      playChimeSound();
+      const senderDisplay = msg.senderName || 'Peer';
+      const preview = msg.text ? (msg.text.length > 40 ? msg.text.substring(0, 40) + '...' : msg.text) : 'sent an image';
+      showToast(`💬 ${senderDisplay}: ${preview}`, 'info');
+    }
+  }
+}
+
+function openImageLightbox(src, name) {
+  if (!imageLightboxModal) return;
+  if (lightboxImage) lightboxImage.src = src;
+  if (lightboxImageName) lightboxImageName.textContent = name || 'image.png';
+  if (lightboxDownloadBtn) {
+    lightboxDownloadBtn.href = src;
+    lightboxDownloadBtn.download = name || 'localdrop-image.png';
+  }
+  imageLightboxModal.classList.remove('hidden');
+  if (window.lucide) lucide.createIcons();
+}
+
+function closeImageLightbox() {
+  if (imageLightboxModal) imageLightboxModal.classList.add('hidden');
+}
+
+// TalkBox Event Listeners
+if (talkboxChannelGeneral) {
+  talkboxChannelGeneral.onclick = () => selectTalkboxChannel('general');
+}
+
+if (talkboxClearChatBtn) {
+  talkboxClearChatBtn.onclick = () => {
+    talkboxHistory[talkboxActiveChannel] = [];
+    renderTalkboxMessages();
+    showToast('Chat cleared for this view', 'info');
+  };
+}
+
+if (talkboxAttachBtn && talkboxImageInput) {
+  talkboxAttachBtn.onclick = () => talkboxImageInput.click();
+  talkboxImageInput.onchange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      stageChatImage(e.target.files[0]);
+    }
+  };
+}
+
+if (talkboxCancelImageBtn) {
+  talkboxCancelImageBtn.onclick = clearStagedImage;
+}
+
+if (talkboxComposerForm) {
+  talkboxComposerForm.onsubmit = (e) => {
+    e.preventDefault();
+    sendTalkboxMessage();
+  };
+}
+
+// Global Clipboard Paste Listener for Images (Ctrl+V)
+window.addEventListener('paste', (e) => {
+  const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+  if (!items) return;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type && items[i].type.startsWith('image/')) {
+      const file = items[i].getAsFile();
+      if (file) {
+        stageChatImage(file);
+        if (currentActiveTab !== 'talk') {
+          switchTab('talk');
+        }
+        showToast('Image pasted from clipboard!', 'info');
+        break;
+      }
+    }
+  }
+});
+
+// Lightbox Close Handlers
+if (closeLightboxBtn) closeLightboxBtn.onclick = closeImageLightbox;
+if (imageLightboxModal) {
+  imageLightboxModal.onclick = (e) => {
+    if (e.target === imageLightboxModal) closeImageLightbox();
+  };
+}

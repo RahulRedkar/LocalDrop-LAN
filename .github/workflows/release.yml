@@ -84,16 +84,17 @@ jobs:
             dist/LocalDrop-LAN-Setup.exe
             dist/LocalDrop-LAN-Setup.zip
             LocalDrop-LAN.exe
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.3' }}
-          name: LocalDrop LAN ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.3' }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.4' }}
+          name: LocalDrop LAN ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.4' }}
           body: |
-            ## LocalDrop LAN ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.3' }}
+            ## LocalDrop LAN ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.4' }}
             
-            ### What's New ("No Wifi No Problem" Update):
-            - 📶 **"No Wifi No Problem" Hotspot Mode:** Temporary on-demand Wi-Fi hotspot on Windows laptops so you can transfer files directly to phones and other devices even without an existing Wi-Fi router or internet connection.
-            - 📲 **Dual Wi-Fi & Web Pairing QR Codes:** Scan QR #1 to automatically connect to the laptop hotspot, then scan QR #2 to instantly open LocalDrop in mobile browser.
-            - 🧹 **Automatic Clean Teardown:** Hotspot safely terminates on exit or one-click stop to keep your network configuration completely clean.
-            - ⚡ **Enhanced Network Status Detection:** Real-time offline connection detection and instant access to Hotspot creation right from the top banner.
+            ### What's New ("The TalkBox Update"):
+            - 💬 **TalkBox Local LAN Messenger:** Instant local chatbox between all connected computers, phones, and tablets with broadcast room & private 1-on-1 channels.
+            - 📸 **Quick Image Sharing & Clipboard Paste:** Paste screenshots directly from clipboard (`Ctrl+V`), drag-and-drop images, or attach via photo picker.
+            - 🔍 **Image Lightbox & Direct Download:** Click any thumbnail to expand full-screen in frosted glass modal with a 1-click download button.
+            - 📦 **100% Offline Asset Bundling:** All design scripts (Tailwind, Lucide, QRCode.js, JSZip) are locally bundled into the app for complete offline air-gapped performance with zero external CDN dependency.
+            - 🔔 **Unread Badges & Notifications:** Audio click/chime and visual unread count badges keep you informed while switching tabs.
           draft: false
           prerelease: false
         env:

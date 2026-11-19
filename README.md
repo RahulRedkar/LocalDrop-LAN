@@ -30,6 +30,8 @@ Fast, secure, and private local file sharing and folder synchronization across y
 - 🔒 **100% Private & Local:** All transfers stay completely within your local network. Your data never touches the cloud or external servers.
 - 🌐 **Works Everywhere:** Compatible with Windows, Mac, Linux, iPhone, iPad, and Android through any modern web browser.
 - 📶 **"No Wifi No Problem" Temporary Hotspot:** No Wi-Fi router nearby? Turn your laptop into an instant direct Wi-Fi hotspot with one click. Other devices join with a quick QR scan and transfer files at full hardware speed.
+- 💬 **TalkBox LAN Messenger:** Instant local chatbox and photo drop between your laptops, phones, and tablets with broadcast and 1-on-1 private channels.
+- 📦 **100% Offline Air-Gapped:** Zero external CDN dependencies. All styles, icons, and tools are bundled locally for complete functionality without internet access.
 
 ---
 
@@ -89,6 +91,13 @@ When you are on the go, outdoors, or in an environment without an active Wi-Fi r
 4. Scan **QR Code 1** with your phone's camera to auto-join the Wi-Fi network.
 5. Scan **QR Code 2** to instantly open the LocalDrop web interface and transfer files.
 6. When done, click **"Stop Hotspot"** or simply close LocalDrop—the temporary hotspot tears down cleanly with zero residual changes.
+
+### 7. TalkBox: Real-time LAN Chat & Image Drop
+Switch to the **"TalkBox"** tab to chat and drop photos in real time:
+- **General Room:** Broadcast messages, links, and code snippets to all connected devices on the LAN.
+- **Direct 1-on-1:** Select any online device from the sidebar to start a private conversation.
+- **Instant Images & Clipboard Paste:** Paste screenshots directly with `Ctrl+V`, drag-and-drop photos, or tap the image picker.
+- **Lightbox Preview:** Click any image thumbnail to inspect full-screen or download with one click.
 
 ---
 

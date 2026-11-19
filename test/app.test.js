@@ -27,14 +27,14 @@ function it(name, fn) {
 async function runTests() {
   // 1. Version Consistency Tests
   console.log('📦 Section 1: Version Consistency');
-  await it('package.json has version 1.0.3', () => {
+  await it('package.json has version 1.0.4', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
-    assert.strictEqual(pkg.version, '1.0.3');
+    assert.strictEqual(pkg.version, '1.0.4');
   });
 
-  await it('installer.iss has version 1.0.3', () => {
+  await it('installer.iss has version 1.0.4', () => {
     const iss = fs.readFileSync(path.join(__dirname, '..', 'installer.iss'), 'utf8');
-    assert.ok(iss.includes('#define MyAppVersion "1.0.3"'), 'installer.iss must define MyAppVersion "1.0.3"');
+    assert.ok(iss.includes('#define MyAppVersion "1.0.4"'), 'installer.iss must define MyAppVersion "1.0.4"');
   });
 
   await it('installer.iss uses portable relative paths', () => {
@@ -44,14 +44,14 @@ async function runTests() {
     assert.ok(iss.includes('Source: "LocalDrop-LAN.exe"'), 'installer.iss Source must be relative LocalDrop-LAN.exe');
   });
 
-  await it('server.js defines APP_VERSION = "1.0.3"', () => {
+  await it('server.js defines APP_VERSION = "1.0.4"', () => {
     const serverCode = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-    assert.ok(serverCode.includes("APP_VERSION = '1.0.3'"), 'server.js must define APP_VERSION = 1.0.3');
+    assert.ok(serverCode.includes("APP_VERSION = '1.0.4'"), 'server.js must define APP_VERSION = 1.0.4');
   });
 
-  await it('public/app.js defines APP_VERSION = "1.0.3"', () => {
+  await it('public/app.js defines APP_VERSION = "1.0.4"', () => {
     const appCode = fs.readFileSync(path.join(__dirname, '..', 'public', 'app.js'), 'utf8');
-    assert.ok(appCode.includes("APP_VERSION = '1.0.3'"), 'public/app.js must define APP_VERSION = 1.0.3');
+    assert.ok(appCode.includes("APP_VERSION = '1.0.4'"), 'public/app.js must define APP_VERSION = 1.0.4');
   });
 
   await it('public/app.js handles speedMbps safely without throwing TypeError', () => {
@@ -71,9 +71,11 @@ async function runTests() {
     assert.ok(html.includes('howToUseModal'), 'index.html must contain howToUseModal');
     assert.ok(html.includes('howToUseBtn'), 'index.html must contain howToUseBtn');
     assert.ok(html.includes('updateAvailableBadge'), 'index.html must contain updateAvailableBadge');
-    assert.ok(html.includes('app.js?v=1.0.3'), 'index.html must reference app.js?v=1.0.3');
+    assert.ok(html.includes('app.js?v=1.0.4'), 'index.html must reference app.js?v=1.0.4');
     assert.ok(html.includes('hotspotModal'), 'index.html must contain hotspotModal');
     assert.ok(html.includes('noWifiBanner'), 'index.html must contain noWifiBanner');
+    assert.ok(html.includes('talkboxStage'), 'index.html must contain talkboxStage');
+    assert.ok(html.includes('tabTalkBtn'), 'index.html must contain tabTalkBtn');
   });
 
   // 3. Server Integration Tests
@@ -123,11 +125,11 @@ async function runTests() {
   require('../server.js');
   await new Promise(r => setTimeout(r, 1200));
 
-  await it(`GET /api/info returns version 1.0.3 on port ${testPort}`, async () => {
+  await it(`GET /api/info returns version 1.0.4 on port ${testPort}`, async () => {
     const res = await makeRequest(testPort, '/api/info');
     assert.strictEqual(res.status, 200);
     const json = JSON.parse(res.body);
-    assert.strictEqual(json.version, '1.0.3');
+    assert.strictEqual(json.version, '1.0.4');
     assert.ok(Array.isArray(json.ips), 'ips must be an array');
     assert.ok(json.hostname, 'hostname must be present');
   });
@@ -136,7 +138,7 @@ async function runTests() {
     const res = await makeRequest(testPort, '/api/check-update');
     assert.strictEqual(res.status, 200);
     const json = JSON.parse(res.body);
-    assert.strictEqual(json.currentVersion, '1.0.3');
+    assert.strictEqual(json.currentVersion, '1.0.4');
     assert.strictEqual(typeof json.updateAvailable, 'boolean');
   });
 
@@ -152,6 +154,15 @@ async function runTests() {
     const res = await makeRequest(testPort, '/app.js');
     assert.strictEqual(res.status, 200);
     assert.ok(res.body.includes('LocalDrop LAN'), 'Response must contain app bundle');
+  });
+
+  await it('GET /vendor/* serves bundled offline assets (tailwind, lucide, qrcode, jszip)', async () => {
+    const assets = ['/vendor/tailwindcss.js', '/vendor/lucide.min.js', '/vendor/qrcode.min.js', '/vendor/jszip.min.js'];
+    for (const asset of assets) {
+      const res = await makeRequest(testPort, asset);
+      assert.strictEqual(res.status, 200, `${asset} must be served with 200`);
+      assert.ok(res.body.length > 5000, `${asset} must not be empty`);
+    }
   });
 
   await it('GET /api/network-status returns connection status', async () => {
@@ -250,6 +261,60 @@ async function runTests() {
       });
 
       ws.on('error', reject);
+    });
+  });
+
+  await it('WebSocket relays TalkBox chat-message for broadcast and direct channels', async () => {
+    return new Promise((resolve, reject) => {
+      const ws1 = new WebSocket(`ws://127.0.0.1:${testPort}`);
+      const ws2 = new WebSocket(`ws://127.0.0.1:${testPort}`);
+      let id1 = null;
+      let id2 = null;
+      let broadcastReceived = false;
+
+      function checkReady() {
+        if (id1 && id2) {
+          ws1.send(JSON.stringify({
+            type: 'chat-message',
+            text: 'Hello LAN room!'
+          }));
+        }
+      }
+
+      ws1.on('message', (raw) => {
+        const msg = JSON.parse(raw);
+        if (msg.type === 'identity') {
+          id1 = msg.peerId;
+          checkReady();
+        }
+        if (msg.type === 'chat-message' && msg.text === 'Direct private message') {
+          assert.strictEqual(broadcastReceived, true);
+          assert.strictEqual(msg.target, id1);
+          assert.strictEqual(msg.sender, id2);
+          ws1.close();
+          ws2.close();
+          resolve();
+        }
+      });
+
+      ws2.on('message', (raw) => {
+        const msg = JSON.parse(raw);
+        if (msg.type === 'identity') {
+          id2 = msg.peerId;
+          checkReady();
+        }
+        if (msg.type === 'chat-message' && msg.text === 'Hello LAN room!') {
+          broadcastReceived = true;
+          ws2.send(JSON.stringify({
+            type: 'chat-message',
+            target: id1,
+            text: 'Direct private message'
+          }));
+        }
+      });
+
+      ws1.on('error', reject);
+      ws2.on('error', reject);
     });
   });
 

@@ -18,7 +18,7 @@ const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 8080;
 const HTTPS_PORT = process.env.HTTPS_PORT || 8443;
 const MDNS_HOST = 'filetrans.local';
-const APP_VERSION = '1.0.3';
+const APP_VERSION = '1.0.4';
 const GITHUB_REPO = 'RahulRedkar/LocalDrop-LAN';
 
 let httpsServer = null;
@@ -815,6 +815,55 @@ function handleWebSocketConnection(ws, req) {
               sender.deviceName = trimmed;
               broadcastPeerList();
             }
+          }
+          break;
+        }
+
+        // TalkBox Local Chat & Quick Image Sharing
+        case 'chat-message': {
+          const rawText = typeof data.text === 'string' ? data.text.substring(0, 10000) : '';
+          const targetId = (data.target && typeof data.target === 'string' && data.target !== 'all') ? data.target : null;
+          
+          let validatedImage = null;
+          if (data.image && typeof data.image === 'object' && typeof data.image.data === 'string') {
+            if (data.image.data.startsWith('data:image/') && data.image.data.length < 15 * 1024 * 1024) {
+              validatedImage = {
+                name: typeof data.image.name === 'string' ? data.image.name.substring(0, 128) : 'image.png',
+                type: typeof data.image.type === 'string' ? data.image.type : 'image/png',
+                data: data.image.data
+              };
+            }
+          }
+
+          if (!rawText.trim() && !validatedImage) break;
+
+          const chatPayload = JSON.stringify({
+            type: 'chat-message',
+            id: data.id || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            target: targetId,
+            sender: peerId,
+            senderName: sender.deviceName,
+            senderColor: sender.color,
+            senderDeviceType: sender.deviceType,
+            text: rawText,
+            image: validatedImage,
+            timestamp: typeof data.timestamp === 'number' ? data.timestamp : Date.now()
+          });
+
+          if (targetId) {
+            const targetPeer = peers.get(targetId);
+            if (targetPeer && targetPeer.ws.readyState === WebSocket.OPEN) {
+              targetPeer.ws.send(chatPayload);
+            }
+            if (sender.ws.readyState === WebSocket.OPEN) {
+              sender.ws.send(chatPayload);
+            }
+          } else {
+            peers.forEach((peer) => {
+              if (peer.ws.readyState === WebSocket.OPEN) {
+                peer.ws.send(chatPayload);
+              }
+            });
           }
           break;
         }

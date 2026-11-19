@@ -1,6 +1,6 @@
 ; Script generated for LocalDrop LAN Installer
 #define MyAppName "LocalDrop LAN"
-#define MyAppVersion "1.0.3"
+#define MyAppVersion "1.0.4"
 #define MyAppPublisher "Rahul Redkar"
 #define MyAppExeName "LocalDrop-LAN.exe"
 
@@ -12,7 +12,7 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL=https://github.com/RahulRedkar/LocalDrop-LAN
 AppSupportURL=https://github.com/RahulRedkar/LocalDrop-LAN/issues
 AppUpdatesURL=https://github.com/RahulRedkar/LocalDrop-LAN/releases
-VersionInfoVersion=1.0.3.0
+VersionInfoVersion=1.0.4.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=LocalDrop LAN - High-Speed Secure P2P File & Folder Sharing
 VersionInfoTextVersion={#MyAppVersion}

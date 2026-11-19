@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LocalDrop LAN - P2P File & Folder Transfer</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 100% Offline Local Bundled Vendor Scripts -->
+  <script src="/vendor/tailwindcss.js"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
@@ -47,13 +48,21 @@
       }
     }
   </script>
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <!-- QRCode.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <!-- JSZip for Client-side Folder Packaging -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <!-- Offline Lucide Icons -->
+  <script src="/vendor/lucide.min.js"></script>
+  <!-- Offline QRCode.js -->
+  <script src="/vendor/qrcode.min.js"></script>
+  <!-- Offline JSZip for Client-side Folder Packaging -->
+  <script src="/vendor/jszip.min.js"></script>
   <style>
+    /* Baseline Guaranteed CSS (Always active even before JS initializes) */
+    .hidden {
+      display: none !important;
+    }
+    [hidden] {
+      display: none !important;
+    }
+
     /* ==========================================================
        APPLE LIQUID GLASS (visionOS / iOS 17+) DESIGN SYSTEM
        ========================================================== */
@@ -500,7 +509,7 @@
           <div class="flex items-center space-x-2">
             <h1 class="text-lg font-bold tracking-tight text-white">LocalDrop LAN</h1>
             <span class="text-[10px] font-semibold uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-400/30 px-2 py-0.5 rounded-full shadow-sm">Pro</span>
-            <span class="text-[10px] font-mono text-white/40 tracking-wider">v1.0.3</span>
+            <span class="text-[10px] font-mono text-white/40 tracking-wider">v1.0.4</span>
             <!-- Glowing update available badge -->
             <button id="updateAvailableBadge" class="hidden items-center space-x-1.5 bg-gradient-to-r from-blue-500/25 via-indigo-500/25 to-purple-500/25 hover:from-blue-500/40 hover:to-purple-500/40 text-blue-300 border border-blue-400/40 px-2.5 py-0.5 rounded-full text-[10px] font-semibold shadow-[0_0_15px_rgba(0,122,255,0.4)] transition-all hover:scale-105 cursor-pointer animate-pulse" title="Click to view and install update">
               <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping"></span>
@@ -516,13 +525,18 @@
 
       <!-- Center Nav Tabs (Liquid Glass Segmented Control) -->
       <nav class="flex items-center bg-black/35 border border-white/15 backdrop-blur-xl p-1 rounded-full shadow-[inset_0_1px_2px_rgba(0,0,0,0.4)]">
-        <button id="tabRadarBtn" class="flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-semibold bg-white/20 text-white shadow-md border border-white/20 backdrop-blur-md transition-all duration-200">
+        <button id="tabRadarBtn" class="flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-semibold bg-white/20 text-white shadow-md border border-white/20 backdrop-blur-md transition-all duration-200 cursor-pointer">
           <i data-lucide="send" class="w-3.5 h-3.5 text-blue-400"></i>
           <span>Transfer</span>
         </button>
-        <button id="tabSyncBtn" class="flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-medium text-white/60 hover:text-white transition-all duration-200">
+        <button id="tabSyncBtn" class="flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-medium text-white/60 hover:text-white transition-all duration-200 cursor-pointer">
           <i data-lucide="folder-sync" class="w-3.5 h-3.5 text-emerald-400"></i>
           <span>Folder Sync</span>
+        </button>
+        <button id="tabTalkBtn" class="relative flex items-center space-x-1.5 px-4 py-1.5 rounded-full text-xs font-medium text-white/60 hover:text-white transition-all duration-200 cursor-pointer">
+          <i data-lucide="message-square" class="w-3.5 h-3.5 text-purple-400"></i>
+          <span>TalkBox</span>
+          <span id="talkboxUnreadBadge" class="hidden absolute -top-1 -right-1 bg-gradient-to-r from-pink-500 to-rose-500 text-white font-bold text-[9px] px-1.5 py-0.2 rounded-full border border-white/40 shadow-sm animate-pulse">0</span>
         </button>
       </nav>
 
@@ -801,6 +815,139 @@
     </div>
   </main>
 
+  <!-- TAB 3: TALKBOX CHAT PANEL -->
+  <main id="talkboxStage" class="stage-view stage-hidden flex-1 max-w-5xl w-full mx-auto p-3 sm:p-5 flex flex-col min-h-[580px] max-h-[calc(100vh-120px)]">
+    <div class="apple-glass flex-1 flex flex-col md:flex-row rounded-3xl overflow-hidden border border-white/15 shadow-2xl backdrop-blur-3xl">
+      
+      <!-- Channels / Peers Sidebar -->
+      <aside class="w-full md:w-72 bg-black/40 border-b md:border-b-0 md:border-r border-white/10 flex flex-col shrink-0">
+        <!-- Sidebar Header -->
+        <div class="p-4 border-b border-white/10 flex items-center justify-between">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-md border border-white/20">
+              <i data-lucide="messages-square" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h2 class="font-bold text-sm text-white tracking-tight">TalkBox</h2>
+              <p class="text-[10px] text-white/50">Local LAN Messenger</p>
+            </div>
+          </div>
+          <span id="talkboxOnlineCount" class="text-[10px] font-semibold bg-white/10 border border-white/15 text-white/70 px-2 py-0.5 rounded-full">1 online</span>
+        </div>
+
+        <!-- Channels & Peer List -->
+        <div class="flex-1 overflow-y-auto p-2.5 space-y-1.5 max-h-48 md:max-h-none">
+          <!-- General LAN Room Channel -->
+          <button id="talkboxChannelGeneral" data-channel="general" class="w-full flex items-center justify-between p-2.5 rounded-2xl bg-white/15 border border-white/20 text-white transition text-left cursor-pointer shadow-sm">
+            <div class="flex items-center space-x-2.5 min-w-0">
+              <div class="w-7 h-7 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center text-white shrink-0 shadow-sm">
+                <i data-lucide="radio" class="w-3.5 h-3.5"></i>
+              </div>
+              <div class="min-w-0">
+                <div class="flex items-center space-x-1.5">
+                  <span class="font-semibold text-xs text-white truncate">General LAN Room</span>
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                </div>
+                <p class="text-[10px] text-white/50 truncate">Broadcast to all devices</p>
+              </div>
+            </div>
+            <span id="talkboxGeneralBadge" class="hidden bg-pink-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">0</span>
+          </button>
+
+          <!-- Direct Messages Section Header -->
+          <div class="pt-3 pb-1 px-2 flex items-center justify-between text-[10px] font-semibold text-white/40 uppercase tracking-wider">
+            <span>Direct Messages</span>
+            <i data-lucide="lock" class="w-2.5 h-2.5 text-white/30"></i>
+          </div>
+
+          <!-- Peer Direct Channels List -->
+          <div id="talkboxPeerChannels" class="space-y-1">
+            <div id="talkboxNoPeersNotice" class="p-3 text-center text-xs text-white/40 space-y-1">
+              <i data-lucide="users" class="w-4 h-4 mx-auto text-white/30 mb-1"></i>
+              <p>No other devices online</p>
+              <p class="text-[10px] text-white/30">Open LocalDrop on another device to chat 1-on-1</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Active Conversation Pane -->
+      <section class="flex-1 flex flex-col bg-white/[0.02] min-w-0">
+        <!-- Conversation Header -->
+        <div class="p-3.5 border-b border-white/10 flex items-center justify-between backdrop-blur-md bg-black/20">
+          <div class="flex items-center space-x-2.5 min-w-0">
+            <div id="talkboxActiveAvatar" class="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center text-white text-xs font-bold border border-white/20 shrink-0">
+              📢
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center space-x-2">
+                <h3 id="talkboxActiveTitle" class="font-bold text-xs sm:text-sm text-white truncate">General LAN Room</h3>
+                <span id="talkboxActiveBadge" class="text-[9px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2 py-0.2 rounded-full">Broadcast</span>
+              </div>
+              <p id="talkboxActiveSubtitle" class="text-[10px] text-white/50 truncate">Messages sent here are shared with all devices on this Wi-Fi network</p>
+            </div>
+          </div>
+          <button id="talkboxClearChatBtn" class="text-white/40 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition cursor-pointer" title="Clear current chat view">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+
+        <!-- Scrollable Messages Container -->
+        <div id="talkboxMessagesList" class="flex-1 overflow-y-auto p-4 space-y-3">
+          <!-- Empty State -->
+          <div id="talkboxEmptyMessages" class="h-full flex flex-col items-center justify-center text-center p-6 text-white/40 space-y-2">
+            <div class="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-white/30 border border-white/10">
+              <i data-lucide="message-square" class="w-6 h-6"></i>
+            </div>
+            <p class="text-xs font-medium text-white/60">No messages in this channel yet.</p>
+            <p class="text-[11px] text-white/40 max-w-xs">Type a message below or paste an image from your clipboard (Ctrl+V) to start chatting!</p>
+          </div>
+        </div>
+
+        <!-- Staged Image Attachment Bar (Shown when an image is ready to be sent) -->
+        <div id="talkboxStagedImageBox" class="hidden p-2.5 bg-black/40 border-t border-white/10 flex items-center justify-between text-xs">
+          <div class="flex items-center space-x-2.5 min-w-0">
+            <img id="talkboxStagedImageThumb" src="" alt="Attachment" class="w-10 h-10 object-cover rounded-lg border border-white/20" />
+            <div class="min-w-0">
+              <div id="talkboxStagedImageName" class="font-semibold text-white truncate text-xs">image.png</div>
+              <div id="talkboxStagedImageSize" class="text-[10px] text-white/50">0 KB</div>
+            </div>
+          </div>
+          <button id="talkboxCancelImageBtn" class="text-white/50 hover:text-rose-400 p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer" title="Remove attachment">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <!-- Message Composer Bar -->
+        <form id="talkboxComposerForm" class="p-3 border-t border-white/10 bg-black/30 backdrop-blur-md flex items-center space-x-2">
+          <!-- Hidden Image File Input -->
+          <input type="file" id="talkboxImageInput" accept="image/*" class="hidden" />
+          
+          <!-- Attachment Button -->
+          <button type="button" id="talkboxAttachBtn" class="p-2.5 rounded-xl apple-btn-glass text-white/70 hover:text-white transition cursor-pointer shrink-0" title="Attach an image">
+            <i data-lucide="image" class="w-4 h-4 text-purple-400"></i>
+          </button>
+
+          <!-- Text Input -->
+          <input 
+            type="text" 
+            id="talkboxTextInput" 
+            maxlength="2000" 
+            placeholder="Type a message or paste screenshot (Ctrl+V)..." 
+            autocomplete="off"
+            class="flex-1 bg-white/[0.08] border border-white/15 focus:border-purple-400 focus:ring-1 focus:ring-purple-400/50 rounded-xl px-3.5 py-2 text-xs text-white placeholder-white/40 focus:outline-none transition"
+          />
+
+          <!-- Send Button -->
+          <button type="submit" id="talkboxSendBtn" class="py-2 px-4 rounded-xl apple-btn-primary font-semibold text-xs text-white shadow-lg flex items-center space-x-1.5 cursor-pointer shrink-0">
+            <span>Send</span>
+            <i data-lucide="send" class="w-3.5 h-3.5"></i>
+          </button>
+        </form>
+      </section>
+    </div>
+  </main>
+
   <!-- Hidden File & Folder Inputs (positioned off-screen so native label click always works) -->
   <input type="file" id="fileInput" style="position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none;" multiple />
   <input type="file" id="folderInput" style="position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none;" webkitdirectory directory multiple />
@@ -975,12 +1122,12 @@
         <div class="flex items-center justify-between text-xs">
           <div class="space-y-0.5">
             <p class="text-[10px] text-white/50 uppercase tracking-wider font-semibold">Current Version</p>
-            <p id="updateModalCurrentVersion" class="text-sm font-bold text-white font-mono">v1.0.3</p>
+            <p id="updateModalCurrentVersion" class="text-sm font-bold text-white font-mono">v1.0.4</p>
           </div>
           <i data-lucide="arrow-right" class="w-4 h-4 text-blue-400"></i>
           <div class="space-y-0.5 text-right">
             <p class="text-[10px] text-emerald-400/80 uppercase tracking-wider font-semibold">Latest Version</p>
-            <p id="updateModalLatestVersion" class="text-sm font-bold text-emerald-300 font-mono">v1.0.3</p>
+            <p id="updateModalLatestVersion" class="text-sm font-bold text-emerald-300 font-mono">v1.0.4</p>
           </div>
         </div>
 
@@ -1210,9 +1357,28 @@
     </div>
   </div>
 
+  <!-- Image Lightbox Modal -->
+  <div id="imageLightboxModal" class="fixed inset-0 bg-black/80 backdrop-blur-3xl z-[120] flex items-center justify-center p-4 hidden">
+    <div class="relative max-w-4xl max-h-[90vh] flex flex-col items-center animate-in fade-in zoom-in-95 w-full">
+      <div class="w-full flex items-center justify-between pb-3 text-white">
+        <span id="lightboxImageName" class="text-xs font-mono text-white/80 truncate max-w-xs sm:max-w-md">image.png</span>
+        <div class="flex items-center space-x-2">
+          <a id="lightboxDownloadBtn" href="#" download="image.png" class="apple-btn-glass px-3 py-1.5 rounded-xl text-xs flex items-center space-x-1.5 text-white no-underline">
+            <i data-lucide="download" class="w-3.5 h-3.5 text-blue-400"></i>
+            <span>Download</span>
+          </a>
+          <button id="closeLightboxBtn" class="text-white/60 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition cursor-pointer">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+      <img id="lightboxImage" src="" alt="Preview" class="max-w-full max-h-[75vh] object-contain rounded-2xl border border-white/20 shadow-2xl" />
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2.5 pointer-events-none"></div>
 
-  <script src="/app.js?v=1.0.3"></script>
+  <script src="/app.js?v=1.0.4"></script>
 </body>
 </html>
