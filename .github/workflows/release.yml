@@ -84,13 +84,16 @@ jobs:
             dist/LocalDrop-LAN-Setup.exe
             dist/LocalDrop-LAN-Setup.zip
             LocalDrop-LAN.exe
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.2' }}
-          name: LocalDrop LAN ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.2' }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.3' }}
+          name: LocalDrop LAN ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.3' }}
           body: |
-            ## LocalDrop LAN ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.2' }}
+            ## LocalDrop LAN ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.3' }}
             
-            ### What's New:
-            - UI changes and transfer bug fixes
+            ### What's New ("No Wifi No Problem" Update):
+            - 📶 **"No Wifi No Problem" Hotspot Mode:** Temporary on-demand Wi-Fi hotspot on Windows laptops so you can transfer files directly to phones and other devices even without an existing Wi-Fi router or internet connection.
+            - 📲 **Dual Wi-Fi & Web Pairing QR Codes:** Scan QR #1 to automatically connect to the laptop hotspot, then scan QR #2 to instantly open LocalDrop in mobile browser.
+            - 🧹 **Automatic Clean Teardown:** Hotspot safely terminates on exit or one-click stop to keep your network configuration completely clean.
+            - ⚡ **Enhanced Network Status Detection:** Real-time offline connection detection and instant access to Hotspot creation right from the top banner.
           draft: false
           prerelease: false
         env:

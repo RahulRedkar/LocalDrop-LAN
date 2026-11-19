@@ -29,6 +29,7 @@ Fast, secure, and private local file sharing and folder synchronization across y
 - 🔄 **Folder Synchronization:** Sync and mirror entire folders between computers on your network with automated change detection.
 - 🔒 **100% Private & Local:** All transfers stay completely within your local network. Your data never touches the cloud or external servers.
 - 🌐 **Works Everywhere:** Compatible with Windows, Mac, Linux, iPhone, iPad, and Android through any modern web browser.
+- 📶 **"No Wifi No Problem" Temporary Hotspot:** No Wi-Fi router nearby? Turn your laptop into an instant direct Wi-Fi hotspot with one click. Other devices join with a quick QR scan and transfer files at full hardware speed.
 
 ---
 
@@ -79,6 +80,15 @@ Ensure all devices (PCs, laptops, smartphones, tablets) are connected to the sam
 ### 5. Keeping Up to Date
 - Click the **"Update"** button in the header at any time to check for the latest releases.
 - If a new version is available, a glowing badge appears in the header. You can download the latest clean ZIP installer bundle or sync the latest Web UI in-place with one click.
+
+### 6. No Wi-Fi? No Problem! (Instant Hotspot Mode)
+When you are on the go, outdoors, or in an environment without an active Wi-Fi router or switch:
+1. LocalDrop automatically detects that you are offline and presents a top banner: *"No Wi-Fi Connection? No problem!"*.
+2. Click **"Start Hotspot"** (or click the **"Hotspot"** button in the header).
+3. LocalDrop initiates a temporary, secure Wi-Fi hotspot (`LocalDrop-Direct`).
+4. Scan **QR Code 1** with your phone's camera to auto-join the Wi-Fi network.
+5. Scan **QR Code 2** to instantly open the LocalDrop web interface and transfer files.
+6. When done, click **"Stop Hotspot"** or simply close LocalDrop—the temporary hotspot tears down cleanly with zero residual changes.
 
 ---
 

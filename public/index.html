@@ -468,6 +468,25 @@
     </div>
   </div>
 
+  <!-- No Wi-Fi Offline Notice Banner (Visible when offline/no Wi-Fi) -->
+  <div id="noWifiBanner" class="hidden w-full bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 border-b border-white/20 px-4 py-2 text-white shadow-xl items-center justify-between text-xs backdrop-blur-xl relative z-40 animate-in slide-in-from-top duration-300">
+    <div class="max-w-6xl mx-auto w-full flex items-center justify-between flex-wrap gap-2">
+      <div class="flex items-center space-x-2 font-medium">
+        <i data-lucide="wifi-off" class="w-4 h-4 text-amber-200"></i>
+        <span><strong>No Wi-Fi Connection?</strong> No problem! Start an Instant Hotspot on this PC to connect phones and transfer files.</span>
+      </div>
+      <div class="flex items-center space-x-2">
+        <button id="noWifiBannerActionBtn" class="bg-white/20 hover:bg-white/30 text-white font-semibold px-3 py-1 rounded-full transition shadow-sm cursor-pointer flex items-center space-x-1.5">
+          <i data-lucide="radio" class="w-3.5 h-3.5 text-amber-200"></i>
+          <span>Start Hotspot</span>
+        </button>
+        <button id="noWifiBannerDismissBtn" class="text-white/60 hover:text-white p-1 transition cursor-pointer" title="Dismiss">
+          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Header: Floating VisionOS Glass Bar -->
   <header class="border-b border-white/[0.12] bg-[#0c0f18]/60 backdrop-blur-2xl saturate-[160%] sticky top-0 z-30 shadow-[0_4px_30px_rgba(0,0,0,0.35)]">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between flex-wrap gap-3">
@@ -481,7 +500,7 @@
           <div class="flex items-center space-x-2">
             <h1 class="text-lg font-bold tracking-tight text-white">LocalDrop LAN</h1>
             <span class="text-[10px] font-semibold uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-400/30 px-2 py-0.5 rounded-full shadow-sm">Pro</span>
-            <span class="text-[10px] font-mono text-white/40 tracking-wider">v1.0.2</span>
+            <span class="text-[10px] font-mono text-white/40 tracking-wider">v1.0.3</span>
             <!-- Glowing update available badge -->
             <button id="updateAvailableBadge" class="hidden items-center space-x-1.5 bg-gradient-to-r from-blue-500/25 via-indigo-500/25 to-purple-500/25 hover:from-blue-500/40 hover:to-purple-500/40 text-blue-300 border border-blue-400/40 px-2.5 py-0.5 rounded-full text-[10px] font-semibold shadow-[0_0_15px_rgba(0,122,255,0.4)] transition-all hover:scale-105 cursor-pointer animate-pulse" title="Click to view and install update">
               <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping"></span>
@@ -509,6 +528,12 @@
 
       <!-- Action Buttons & Identity -->
       <div class="flex items-center space-x-2.5">
+        <!-- Hotspot Button ("No Wifi No Problem") -->
+        <button id="hotspotBtn" class="flex items-center space-x-1.5 apple-btn-glass px-3 py-1.5 rounded-full text-xs font-medium transition" title="Start or manage Instant Wi-Fi Hotspot">
+          <i data-lucide="radio" class="w-3.5 h-3.5 text-amber-400"></i>
+          <span class="hidden md:inline">Hotspot</span>
+        </button>
+
         <!-- Check for Updates Button -->
         <button id="checkUpdateBtn" class="flex items-center space-x-1.5 apple-btn-glass px-3 py-1.5 rounded-full text-xs font-medium transition" title="Check for software updates">
           <i data-lucide="sparkles" class="w-3.5 h-3.5 text-blue-400"></i>
@@ -950,12 +975,12 @@
         <div class="flex items-center justify-between text-xs">
           <div class="space-y-0.5">
             <p class="text-[10px] text-white/50 uppercase tracking-wider font-semibold">Current Version</p>
-            <p id="updateModalCurrentVersion" class="text-sm font-bold text-white font-mono">v1.0.2</p>
+            <p id="updateModalCurrentVersion" class="text-sm font-bold text-white font-mono">v1.0.3</p>
           </div>
           <i data-lucide="arrow-right" class="w-4 h-4 text-blue-400"></i>
           <div class="space-y-0.5 text-right">
             <p class="text-[10px] text-emerald-400/80 uppercase tracking-wider font-semibold">Latest Version</p>
-            <p id="updateModalLatestVersion" class="text-sm font-bold text-emerald-300 font-mono">v1.0.2</p>
+            <p id="updateModalLatestVersion" class="text-sm font-bold text-emerald-300 font-mono">v1.0.3</p>
           </div>
         </div>
 
@@ -1084,9 +1109,110 @@
     </div>
   </div>
 
+  <!-- Hotspot Modal ("No Wifi No Problem" Temporary Hotspot) -->
+  <div id="hotspotModal" class="fixed inset-0 bg-black/60 backdrop-blur-2xl z-[105] flex items-center justify-center p-4 hidden">
+    <div class="apple-glass-modal p-6 max-w-lg w-full space-y-5 animate-in fade-in zoom-in-95 relative text-left">
+      <button id="closeHotspotModalBtn" class="absolute top-4 right-4 text-white/50 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition" title="Close">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+
+      <!-- Modal Header -->
+      <div class="flex items-center space-x-3.5">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 via-orange-500 to-rose-500 flex items-center justify-center text-white shadow-lg shadow-amber-500/30 border border-white/25 shrink-0">
+          <i data-lucide="radio" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h3 class="font-bold text-white text-base tracking-tight">No Wi-Fi? No Problem!</h3>
+            <span id="hotspotStatusBadge" class="text-[10px] font-semibold bg-white/10 text-white/70 border border-white/20 px-2.5 py-0.5 rounded-full">Inactive</span>
+          </div>
+          <p class="text-xs text-white/60 mt-0.5">Create an instant temporary Wi-Fi network from this PC to connect phones and transfer files.</p>
+        </div>
+      </div>
+
+      <!-- Hotspot Inactive State Content -->
+      <div id="hotspotInactiveView" class="space-y-4">
+        <div class="apple-glass-well p-4 space-y-2 text-xs">
+          <div class="flex items-start space-x-2.5 text-amber-300">
+            <i data-lucide="info" class="w-4 h-4 shrink-0 mt-0.5"></i>
+            <span class="text-white/80 leading-relaxed">
+              When no Wi-Fi router is available, LocalDrop can turn this laptop into a high-speed direct Wi-Fi hotspot. Other devices simply connect to this network and open the browser to share files at full speed.
+            </span>
+          </div>
+          <div class="pt-2 border-t border-white/10 grid grid-cols-2 gap-2 text-[11px] text-white/60">
+            <div><strong>Default SSID:</strong> <span class="font-mono text-white/80">LocalDrop-Direct</span></div>
+            <div><strong>Password:</strong> <span class="font-mono text-white/80">localdrop8080</span></div>
+          </div>
+        </div>
+
+        <button id="startHotspotBtn" class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white font-semibold text-xs transition shadow-lg shadow-orange-500/25 flex items-center justify-center space-x-2 cursor-pointer">
+          <i data-lucide="radio" class="w-4 h-4"></i>
+          <span id="startHotspotBtnText">Start Instant Hotspot</span>
+        </button>
+      </div>
+
+      <!-- Hotspot Active State Content -->
+      <div id="hotspotActiveView" class="space-y-4 hidden">
+        <!-- Active Credentials Banner -->
+        <div class="apple-glass-well p-3.5 flex items-center justify-between flex-wrap gap-2 text-xs">
+          <div>
+            <div class="text-white/50 text-[10px] uppercase tracking-wider font-semibold">Wi-Fi Network (SSID)</div>
+            <div id="activeHotspotSsid" class="text-sm font-bold font-mono text-amber-300">LocalDrop-Direct</div>
+          </div>
+          <div>
+            <div class="text-white/50 text-[10px] uppercase tracking-wider font-semibold">Password</div>
+            <div id="activeHotspotPassword" class="text-sm font-bold font-mono text-white">localdrop8080</div>
+          </div>
+          <div>
+            <div class="text-white/50 text-[10px] uppercase tracking-wider font-semibold">Gateway URL</div>
+            <div id="activeHotspotUrl" class="text-sm font-bold font-mono text-blue-400">http://192.168.137.1:8080</div>
+          </div>
+        </div>
+
+        <!-- Dual QR Codes for Pairing -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <!-- QR 1: Wi-Fi Auto-Join -->
+          <div class="apple-glass-well p-3 text-center space-y-2">
+            <div class="text-xs font-semibold text-amber-300 flex items-center justify-center space-x-1.5">
+              <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
+              <span>1. Join Wi-Fi</span>
+            </div>
+            <div class="flex justify-center p-2.5 bg-white rounded-xl shadow-md mx-auto w-fit">
+              <div id="hotspotWifiQrCode"></div>
+            </div>
+            <p class="text-[10px] text-white/50 leading-tight">Scan with iPhone Camera or Android Wi-Fi scanner to auto-connect</p>
+          </div>
+
+          <!-- QR 2: Web App Link -->
+          <div class="apple-glass-well p-3 text-center space-y-2">
+            <div class="text-xs font-semibold text-blue-400 flex items-center justify-center space-x-1.5">
+              <i data-lucide="qr-code" class="w-3.5 h-3.5"></i>
+              <span>2. Open LocalDrop</span>
+            </div>
+            <div class="flex justify-center p-2.5 bg-white rounded-xl shadow-md mx-auto w-fit">
+              <div id="hotspotAppQrCode"></div>
+            </div>
+            <p class="text-[10px] text-white/50 leading-tight">Scan once connected to Wi-Fi to open the file sharing page</p>
+          </div>
+        </div>
+
+        <!-- Stop Button -->
+        <button id="stopHotspotBtn" class="w-full py-2.5 px-4 rounded-xl apple-btn-glass text-rose-300 hover:text-white hover:bg-rose-500/20 border border-rose-500/30 text-xs font-semibold transition flex items-center justify-center space-x-2 cursor-pointer">
+          <i data-lucide="square" class="w-3.5 h-3.5 text-rose-400"></i>
+          <span>Stop Hotspot</span>
+        </button>
+      </div>
+
+      <!-- Hotspot Notice Box -->
+      <div id="hotspotNoticeBox" class="hidden p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-xs text-amber-200 space-y-1">
+        <p id="hotspotNoticeText"></p>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2.5 pointer-events-none"></div>
 
-  <script src="/app.js?v=1.0.2"></script>
+  <script src="/app.js?v=1.0.3"></script>
 </body>
 </html>

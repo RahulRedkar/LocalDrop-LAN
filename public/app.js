@@ -5,7 +5,7 @@ const CHUNK_SIZE = 256 * 1024; // 256KB network packet (max safe WebRTC & WebSoc
 const LOW_WATER_MARK = 1024 * 1024; // 1MB low-water mark
 const HIGH_WATER_MARK = 8 * 1024 * 1024; // 8MB high-water mark
 
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.0.3';
 
 // Device identification
 let myPeerId = null;
@@ -148,6 +148,32 @@ const updateDownloadInstallerBtn = document.getElementById('updateDownloadInstal
 const updateDownloadZipBtn = document.getElementById('updateDownloadZipBtn');
 const updateDownloadBtnText = document.getElementById('updateDownloadBtnText');
 const updateSyncWebBtn = document.getElementById('updateSyncWebBtn');
+
+// UI Elements: No Wi-Fi Top Banner ("No Wifi No Problem")
+const noWifiBanner = document.getElementById('noWifiBanner');
+const noWifiBannerActionBtn = document.getElementById('noWifiBannerActionBtn');
+const noWifiBannerDismissBtn = document.getElementById('noWifiBannerDismissBtn');
+
+// UI Elements: Hotspot Modal & Controls
+const hotspotBtn = document.getElementById('hotspotBtn');
+const hotspotModal = document.getElementById('hotspotModal');
+const closeHotspotModalBtn = document.getElementById('closeHotspotModalBtn');
+const hotspotStatusBadge = document.getElementById('hotspotStatusBadge');
+const hotspotInactiveView = document.getElementById('hotspotInactiveView');
+const hotspotActiveView = document.getElementById('hotspotActiveView');
+const startHotspotBtn = document.getElementById('startHotspotBtn');
+const startHotspotBtnText = document.getElementById('startHotspotBtnText');
+const stopHotspotBtn = document.getElementById('stopHotspotBtn');
+const activeHotspotSsid = document.getElementById('activeHotspotSsid');
+const activeHotspotPassword = document.getElementById('activeHotspotPassword');
+const activeHotspotUrl = document.getElementById('activeHotspotUrl');
+const hotspotWifiQrCode = document.getElementById('hotspotWifiQrCode');
+const hotspotAppQrCode = document.getElementById('hotspotAppQrCode');
+const hotspotNoticeBox = document.getElementById('hotspotNoticeBox');
+const hotspotNoticeText = document.getElementById('hotspotNoticeText');
+
+let hotspotWifiQrObj = null;
+let hotspotAppQrObj = null;
 
 // UI Elements: Force Update Top Banner
 const updateBanner = document.getElementById('updateBanner');
@@ -3272,3 +3298,197 @@ if (updateSyncWebBtn) {
 // Initial background update check after 3 seconds, then every 30 minutes
 setTimeout(() => checkForSoftwareUpdates(false), 3000);
 setInterval(() => checkForSoftwareUpdates(false), 30 * 60 * 1000);
+
+// ==========================================
+// HOTSPOT & OFFLINE DETECTION ("NO WIFI NO PROBLEM")
+// ==========================================
+function renderHotspotQrCodes(ssid, password, appUrl) {
+  if (!hotspotWifiQrCode || !hotspotAppQrCode || !window.QRCode) return;
+  hotspotWifiQrCode.innerHTML = '';
+  hotspotAppQrCode.innerHTML = '';
+
+  const wifiPayload = `WIFI:T:WPA;S:${ssid};P:${password};;`;
+  hotspotWifiQrObj = new QRCode(hotspotWifiQrCode, {
+    text: wifiPayload,
+    width: 140,
+    height: 140,
+    colorDark: '#000000',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
+  });
+
+  hotspotAppQrObj = new QRCode(hotspotAppQrCode, {
+    text: appUrl,
+    width: 140,
+    height: 140,
+    colorDark: '#000000',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
+  });
+}
+
+function updateHotspotUi(status) {
+  if (!status) return;
+
+  if (status.active) {
+    if (hotspotStatusBadge) {
+      hotspotStatusBadge.textContent = 'Active';
+      hotspotStatusBadge.className = 'text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-2.5 py-0.5 rounded-full';
+    }
+    if (hotspotInactiveView) hotspotInactiveView.classList.add('hidden');
+    if (hotspotActiveView) hotspotActiveView.classList.remove('hidden');
+    if (hotspotNoticeBox) hotspotNoticeBox.classList.add('hidden');
+
+    const ssid = status.ssid || 'LocalDrop-Direct';
+    const pwd = status.password || 'localdrop8080';
+    const port = window.location.port || '8080';
+    const appUrl = `http://${status.ip || '192.168.137.1'}:${port}`;
+
+    if (activeHotspotSsid) activeHotspotSsid.textContent = ssid;
+    if (activeHotspotPassword) activeHotspotPassword.textContent = pwd;
+    if (activeHotspotUrl) activeHotspotUrl.textContent = appUrl;
+
+    renderHotspotQrCodes(ssid, pwd, appUrl);
+  } else {
+    if (hotspotStatusBadge) {
+      hotspotStatusBadge.textContent = 'Inactive';
+      hotspotStatusBadge.className = 'text-[10px] font-semibold bg-white/10 text-white/70 border border-white/20 px-2.5 py-0.5 rounded-full';
+    }
+    if (hotspotInactiveView) hotspotInactiveView.classList.remove('hidden');
+    if (hotspotActiveView) hotspotActiveView.classList.add('hidden');
+
+    if (status.supported === false && status.reason) {
+      if (hotspotNoticeBox && hotspotNoticeText) {
+        hotspotNoticeText.textContent = status.reason;
+        hotspotNoticeBox.classList.remove('hidden');
+      }
+    } else if (hotspotNoticeBox) {
+      hotspotNoticeBox.classList.add('hidden');
+    }
+  }
+
+  if (window.lucide) lucide.createIcons();
+}
+
+async function fetchHotspotStatus() {
+  try {
+    const res = await fetch('/api/hotspot/status');
+    const data = await res.json();
+    updateHotspotUi(data);
+    return data;
+  } catch (err) {
+    console.error('Failed to fetch hotspot status:', err);
+    return null;
+  }
+}
+
+function openHotspotModal() {
+  if (hotspotModal) {
+    hotspotModal.classList.remove('hidden');
+    fetchHotspotStatus();
+    if (window.lucide) lucide.createIcons();
+  }
+}
+
+function closeHotspotModal() {
+  if (hotspotModal) hotspotModal.classList.add('hidden');
+}
+
+async function startHotspotAction() {
+  if (!startHotspotBtn) return;
+  startHotspotBtn.disabled = true;
+  if (startHotspotBtnText) startHotspotBtnText.textContent = 'Starting Hotspot...';
+
+  try {
+    const res = await fetch('/api/hotspot/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ssid: 'LocalDrop-Direct', password: 'localdrop8080' })
+    });
+    const result = await res.json();
+    if (result.success) {
+      showToast('Hotspot started! Connect devices to LocalDrop-Direct', 'success');
+      updateHotspotUi(result);
+      if (noWifiBanner) {
+        noWifiBanner.classList.add('hidden');
+        noWifiBanner.classList.remove('flex');
+      }
+    } else {
+      const errMsg = result.error || result.reason || 'Failed to start Wi-Fi Hotspot.';
+      showToast(errMsg, 'error');
+      if (hotspotNoticeBox && hotspotNoticeText) {
+        hotspotNoticeText.textContent = errMsg;
+        hotspotNoticeBox.classList.remove('hidden');
+      }
+    }
+  } catch (err) {
+    showToast('Hotspot error: ' + err.message, 'error');
+  } finally {
+    startHotspotBtn.disabled = false;
+    if (startHotspotBtnText) startHotspotBtnText.textContent = 'Start Instant Hotspot';
+  }
+}
+
+async function stopHotspotAction() {
+  if (!stopHotspotBtn) return;
+  stopHotspotBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/hotspot/stop', { method: 'POST' });
+    const result = await res.json();
+    showToast('Hotspot stopped.', 'info');
+    updateHotspotUi({ active: false, supported: true });
+    checkNetworkStatus();
+  } catch (err) {
+    showToast('Error stopping hotspot: ' + err.message, 'error');
+  } finally {
+    stopHotspotBtn.disabled = false;
+  }
+}
+
+function checkNetworkStatus() {
+  fetch('/api/network-status')
+    .then(res => res.json())
+    .then(data => {
+      if (data && data.isOffline) {
+        if (noWifiBanner) {
+          noWifiBanner.classList.remove('hidden');
+          noWifiBanner.classList.add('flex');
+        }
+      } else {
+        if (noWifiBanner) {
+          noWifiBanner.classList.add('hidden');
+          noWifiBanner.classList.remove('flex');
+        }
+      }
+    })
+    .catch(() => {});
+}
+
+if (hotspotBtn) hotspotBtn.onclick = openHotspotModal;
+if (closeHotspotModalBtn) closeHotspotModalBtn.onclick = closeHotspotModal;
+if (hotspotModal) {
+  hotspotModal.onclick = (e) => {
+    if (e.target === hotspotModal) closeHotspotModal();
+  };
+}
+if (startHotspotBtn) startHotspotBtn.onclick = startHotspotAction;
+if (stopHotspotBtn) stopHotspotBtn.onclick = stopHotspotAction;
+
+if (noWifiBannerActionBtn) {
+  noWifiBannerActionBtn.onclick = () => {
+    openHotspotModal();
+  };
+}
+if (noWifiBannerDismissBtn) {
+  noWifiBannerDismissBtn.onclick = () => {
+    if (noWifiBanner) {
+      noWifiBanner.classList.add('hidden');
+      noWifiBanner.classList.remove('flex');
+    }
+  };
+}
+
+// Check network status on load and periodically
+checkNetworkStatus();
+setInterval(checkNetworkStatus, 15000);

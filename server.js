@@ -8,6 +8,7 @@ const { Bonjour } = require('bonjour-service');
 const selfsigned = require('selfsigned');
 const fs = require('fs');
 const archiver = require('archiver');
+const hotspotManager = require('./hotspot-manager');
 
 const app = express();
 app.use(express.json({ limit: '20mb' }));
@@ -17,7 +18,7 @@ const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 8080;
 const HTTPS_PORT = process.env.HTTPS_PORT || 8443;
 const MDNS_HOST = 'filetrans.local';
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.0.3';
 const GITHUB_REPO = 'RahulRedkar/LocalDrop-LAN';
 
 let httpsServer = null;
@@ -41,6 +42,9 @@ try {
 // Graceful cleanup on exit
 function cleanup() {
   try {
+    hotspotManager.stopHotspot();
+  } catch (_) {}
+  try {
     bonjour.unpublishAll();
     bonjour.destroy();
   } catch (_) {}
@@ -50,6 +54,9 @@ function cleanup() {
 }
 process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
+process.on('exit', () => {
+  try { hotspotManager.stopHotspot(); } catch (_) {}
+});
 
 // Serve static assets from public/ (embedded snapshot or local directory) with no-cache headers
 const publicDir = fs.existsSync(path.join(process.cwd(), 'public'))
@@ -302,6 +309,52 @@ app.post('/api/update/sync-web', async (req, res) => {
     res.json({ success: true, message: 'Web UI updated to latest version successfully!' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to sync web assets: ' + err.message });
+  }
+});
+
+// Network & Offline Status API
+app.get('/api/network-status', (req, res) => {
+  const ips = getLocalIPAddresses();
+  const isOffline = ips.length === 0;
+  res.json({
+    ips,
+    isOffline,
+    hostname: os.hostname(),
+    port: PORT
+  });
+});
+
+// Hotspot Control APIs ("No Wifi No Problem" Temporary Mobile Hotspot)
+app.get('/api/hotspot/status', async (req, res) => {
+  try {
+    const status = await hotspotManager.getStatus();
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ supported: false, active: false, error: err.message });
+  }
+});
+
+app.post('/api/hotspot/start', async (req, res) => {
+  try {
+    const { ssid, password } = req.body || {};
+    const result = await hotspotManager.startHotspot({ ssid, password });
+    if (result.success && result.ip) {
+      if (!localIPs.includes(result.ip)) {
+        localIPs.push(result.ip);
+      }
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/hotspot/stop', async (req, res) => {
+  try {
+    const result = await hotspotManager.stopHotspot();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

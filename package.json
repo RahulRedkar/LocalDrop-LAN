@@ -1,6 +1,6 @@
 {
   "name": "localdrop-lan",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Production-ready, self-hosted LAN File Sharing Web Application using WebRTC and WebSockets",
   "main": "server.js",
   "bin": "server.js",
@@ -11,7 +11,8 @@
   },
   "pkg": {
     "assets": [
-      "public/**/*"
+      "public/**/*",
+      "scripts/**/*"
     ]
   },
   "dependencies": {
